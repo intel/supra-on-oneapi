@@ -60,12 +60,12 @@ it will show like below:
 
 Find this commit message:
 
-![avatar](https://gitlab.devtools.intel.com/wangyon1/supra-markdow-pictures/-/raw/master/Commit%20info.PNG?inline=false)
+![avatar](https://github.com/intel/supra-on-oneapi/raw/master/images/Commit%20info.PNG)
 
 Reset the supra commit HEAD, use 
 
 `git reset --hard 73c930a08a7b1087f5be588863876a648a1add99`
-![avatar](https://gitlab.devtools.intel.com/wangyon1/supra-markdow-pictures/-/raw/master/reset%20success%20modify.png?inline=false)
+![avatar](https://github.com/intel/supra-on-oneapi/raw/master/images/reset%20success%20modify.png)
 
 Apply patches to SUPRA:
 
@@ -89,7 +89,7 @@ For oneAPI beta07 version, you need change the $PATH, follow this two steps:
 
 it will print:
 
-![avatar](https://gitlab.devtools.intel.com/wangyon1/supra-markdow-pictures/-/raw/master/PATH%20modify.png?inline=false)
+![avatar](https://github.com/intel/supra-on-oneapi/raw/master/images/PATH%20modify.png)
 
 copy the whole PATH value except the contents in <font size="3">  <font color="#dd0000"> Red Rectangle.</font> <br />
 
@@ -99,7 +99,7 @@ Reset PATH variable value with before copied content use this command:
 
 it should like this:
 
-![avatar](https://gitlab.devtools.intel.com/wangyon1/supra-markdow-pictures/-/raw/master/reset%20path.PNG?inline=false)
+![avatar](https://github.com/intel/supra-on-oneapi/raw/master/images/reset%20path.PNG)
 
 (use your machine to print PATH content, don't copy from here)
 
@@ -125,7 +125,7 @@ Run the SUPRA GUI:
 
 the SUPRA GUI show like this:
 
-![avatar](https://gitlab.devtools.intel.com/wangyon1/supra-markdow-pictures/-/raw/master/guie.PNG?inline=false)
+![avatar](https://github.com/intel/supra-on-oneapi/raw/master/images/guie.PNG)
 
 Check the performance, open supra.log in the build directory: 
 
