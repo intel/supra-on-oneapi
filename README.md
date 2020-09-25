@@ -68,7 +68,7 @@ Reset the supra commit HEAD, use
 
 Apply patches to SUPRA:
 
-`git am ../supra_for_oneapi_patch/*.patch`
+`git am ../supra-on-oneapi/*.patch`
 
 
 Build and Run supra demo, in supra directory:
