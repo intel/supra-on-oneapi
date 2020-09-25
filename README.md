@@ -28,6 +28,7 @@ This project was tested on Intel i7-8700K CPU with Intel(R) UHD Graphics 630, pl
     The patch 0002-* describes using DPC++ file replace original CUDA file in src/SupraLib/ folder.
     The patch 0003-* describes modification to the DPC++ files. Apply patch 0001-*, 0002-* and 0003-*, you can build and run SUPRA successfully.
     The patch 0004-* describes optimization to BeamformingNode and HilbertEnvelopeNode. Apply patch 0004-*, the BeamformingNode and HilbertEnvelopeNode performance will improve.
+    The patch 0005-* do code clean, using sycl in file name and variable name.
 
 ### 
 
@@ -54,8 +55,6 @@ Check supra commit log:
 
 `git log`
 
-it will show like below:
-
 
 
 Find this commit message:
@@ -70,6 +69,7 @@ Reset the supra commit HEAD, use
 Apply patches to SUPRA:
 
 `git am ../supra_for_oneapi_patch/*.patch`
+
 
 Build and Run supra demo, in supra directory:
 
@@ -115,11 +115,23 @@ Build:
 
 `make -j4`
 
-Copy sample data from supra_for_oneapi_patch/ folder to supra/build/ directory
+Download sample data, in build directory create data folder:
 
-`cp -r ../../supra_for_oneapi_patch/data .`
+`mkdir data`
 
-Run the SUPRA GUI:
+`cd data`
+
+`wget http://campar.in.tum.de/files/goeblr/mockData_linearProbe.zip`
+
+unzip the sample data:
+
+`unzip mockData_linearProbe.zip`
+
+Copy config file to data folder:
+
+`cp ../../config/configDemo.xml .`
+
+Run the SUPRA GUI, in build folder:
 
 `src/GraphicInterface/SUPRA_GUI -c data/configDemo.xml -a`
 
