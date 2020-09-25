@@ -1,0 +1,456 @@
+From c4e1369308fad71111a1b7576b90a445003d8969 Mon Sep 17 00:00:00 2001
+From: shanliwa1 <1459802323@qq.com>
+Date: Fri, 25 Sep 2020 11:50:03 +0800
+Subject: [PATCH 5/5] code clean from cuda to sycl
+
+---
+ src/SupraLib/Beamformer/Beamformer.cpp        |  2 +-
+ src/SupraLib/Beamformer/BeamformingNode.cpp   | 12 ++++----
+ src/SupraLib/Beamformer/BeamformingNode.h     |  6 ++--
+ .../Beamformer/HilbertEnvelopeNode.cpp        |  2 +-
+ src/SupraLib/Beamformer/RawDelayNode.cpp      |  2 +-
+ ...merCuda.dp.cpp => RxBeamformerSYCL.dp.cpp} | 30 +++++++++----------
+ ...{RxBeamformerCuda.h => RxBeamformerSYCL.h} | 12 ++++----
+ src/SupraLib/Beamformer/ScanConverter.dp.cpp  |  2 +-
+ src/SupraLib/Beamformer/WindowFunction.h      |  2 +-
+ src/SupraLib/CMakeLists.txt                   |  6 ++--
+ src/SupraLib/Container.h                      |  8 ++---
+ src/SupraLib/ContainerFactory.h               |  2 +-
+ .../{cudaUtility.h => syclUtility.h}          | 18 +++++------
+ src/SupraLib/vec.h                            |  2 +-
+ 14 files changed, 53 insertions(+), 53 deletions(-)
+ rename src/SupraLib/Beamformer/{RxBeamformerCuda.dp.cpp => RxBeamformerSYCL.dp.cpp} (97%)
+ rename src/SupraLib/Beamformer/{RxBeamformerCuda.h => RxBeamformerSYCL.h} (91%)
+ rename src/SupraLib/utilities/{cudaUtility.h => syclUtility.h} (87%)
+
+diff --git a/src/SupraLib/Beamformer/Beamformer.cpp b/src/SupraLib/Beamformer/Beamformer.cpp
+index 60c79dd..e3a6538 100644
+--- a/src/SupraLib/Beamformer/Beamformer.cpp
++++ b/src/SupraLib/Beamformer/Beamformer.cpp
+@@ -13,7 +13,7 @@
+ // ================================================================================================
+ 
+ #include "Beamformer.h"
+-#include "RxBeamformerCuda.h"
++#include "RxBeamformerSYCL.h"
+ 
+ #include <exception>
+ #include <cassert>
+diff --git a/src/SupraLib/Beamformer/BeamformingNode.cpp b/src/SupraLib/Beamformer/BeamformingNode.cpp
+index 5a49f7a..6b79102 100644
+--- a/src/SupraLib/Beamformer/BeamformingNode.cpp
++++ b/src/SupraLib/Beamformer/BeamformingNode.cpp
+@@ -13,7 +13,7 @@
+ 
+ #include "USImage.h"
+ #include "USRawData.h"
+-#include "RxBeamformerCuda.h"
++#include "RxBeamformerSYCL.h"
+ 
+ #include <utilities/Logging.h>
+ #include <algorithm>
+@@ -146,7 +146,7 @@ namespace supra
+ 				}
+ 				if (needNewBeamformer)
+ 				{
+-					m_beamformer = std::make_shared<RxBeamformerCuda>(*m_lastSeenBeamformerParameters);
++					m_beamformer = std::make_shared<RxBeamformerSYCL>(*m_lastSeenBeamformerParameters);
+ 				}
+ 
+ 				switch (pRawData->getDataType())
+@@ -200,18 +200,18 @@ namespace supra
+ 	void BeamformingNode::readBeamformerType()
+ 	{
+ 		string beamformer = m_configurationDictionary.get<string>("beamformerType");
+-		m_beamformerType = RxBeamformerCuda::DelayAndSum;
++		m_beamformerType = RxBeamformerSYCL::DelayAndSum;
+ 		if (beamformer == "DelayAndSum")
+ 		{
+-			m_beamformerType = RxBeamformerCuda::DelayAndSum;
++			m_beamformerType = RxBeamformerSYCL::DelayAndSum;
+ 		}
+ 		else if (beamformer == "DelayAndStdDev")
+ 		{
+-			m_beamformerType = RxBeamformerCuda::DelayAndStdDev;
++			m_beamformerType = RxBeamformerSYCL::DelayAndStdDev;
+ 		}
+ 		else if (beamformer == "TestSignal")
+ 		{
+-			m_beamformerType = RxBeamformerCuda::TestSignal;
++			m_beamformerType = RxBeamformerSYCL::TestSignal;
+ 		}
+ 	}
+ 
+diff --git a/src/SupraLib/Beamformer/BeamformingNode.h b/src/SupraLib/Beamformer/BeamformingNode.h
+index 314eb24..72b0109 100644
+--- a/src/SupraLib/Beamformer/BeamformingNode.h
++++ b/src/SupraLib/Beamformer/BeamformingNode.h
+@@ -24,7 +24,7 @@
+ #include "RecordObject.h"
+ #include "SyncRecordObject.h"
+ #include "RxBeamformerParameters.h"
+-#include "RxBeamformerCuda.h"
++#include "RxBeamformerSYCL.h"
+ 
+ namespace supra
+ {
+@@ -67,7 +67,7 @@ namespace supra
+ 		void readBeamformerType();
+ 		void updateImageProperties(std::shared_ptr<const USImageProperties> imageProperties);
+ 
+-		std::shared_ptr<RxBeamformerCuda> m_beamformer;
++		std::shared_ptr<RxBeamformerSYCL> m_beamformer;
+ 		std::shared_ptr<const RxBeamformerParameters> m_lastSeenBeamformerParameters;
+ 
+ 		std::shared_ptr<const USImageProperties> m_lastSeenImageProperties;
+@@ -81,7 +81,7 @@ namespace supra
+ 		double m_windowParameter;
+ 		double m_speedOfSoundMMperS;
+ 		DataType m_outputType;
+-		RxBeamformerCuda::RxSampleBeamformer m_beamformerType;
++		RxBeamformerSYCL::RxSampleBeamformer m_beamformerType;
+ 		bool m_interpolateTransmits;
+ 		int32_t m_additionalOffset;
+ 	};
+diff --git a/src/SupraLib/Beamformer/HilbertEnvelopeNode.cpp b/src/SupraLib/Beamformer/HilbertEnvelopeNode.cpp
+index a9aa775..ad8ee3a 100644
+--- a/src/SupraLib/Beamformer/HilbertEnvelopeNode.cpp
++++ b/src/SupraLib/Beamformer/HilbertEnvelopeNode.cpp
+@@ -16,7 +16,7 @@
+ #include <utilities/Logging.h>
+ 
+ //TODO remove this later
+-#include <utilities/cudaUtility.h>
++#include <utilities/syclUtility.h>
+ 
+ using namespace std;
+ 
+diff --git a/src/SupraLib/Beamformer/RawDelayNode.cpp b/src/SupraLib/Beamformer/RawDelayNode.cpp
+index 3844969..d4885e7 100644
+--- a/src/SupraLib/Beamformer/RawDelayNode.cpp
++++ b/src/SupraLib/Beamformer/RawDelayNode.cpp
+@@ -13,7 +13,7 @@
+ 
+ #include "USImage.h"
+ #include "USRawData.h"
+-#include "RxBeamformerCuda.h"
++#include "RxBeamformerSYCL.h"
+ 
+ #include <utilities/Logging.h>
+ #include <utilities/DataType.h>
+diff --git a/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp b/src/SupraLib/Beamformer/RxBeamformerSYCL.dp.cpp
+similarity index 97%
+rename from src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
+rename to src/SupraLib/Beamformer/RxBeamformerSYCL.dp.cpp
+index a422d53..f48e300 100644
+--- a/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
++++ b/src/SupraLib/Beamformer/RxBeamformerSYCL.dp.cpp
+@@ -10,19 +10,19 @@
+ // ================================================================================================
+ #include <CL/sycl.hpp>
+ #include <dpct/dpct.hpp>
+-#include "RxBeamformerCuda.h"
++#include "RxBeamformerSYCL.h"
+ #include "USImage.h"
+ #include "USRawData.h"
+ #include "RxSampleBeamformerDelayAndSum.h"
+ #include "RxSampleBeamformerDelayAndStdDev.h"
+ #include "RxSampleBeamformerTestSignal.h"
+ #include "RxBeamformerCommon.h"
+-#include "utilities/cudaUtility.h"
++#include "utilities/syclUtility.h"
+ 
+ //TODO ALL ELEMENT/SCANLINE Y positons are actually Z! Change all variable names accordingly
+ namespace supra
+ {
+-	RxBeamformerCuda::RxBeamformerCuda(const RxBeamformerParameters & parameters)
++	RxBeamformerSYCL::RxBeamformerSYCL(const RxBeamformerParameters & parameters)
+ 		: m_windowFunction(nullptr)
+ 	{
+ 		m_lastSeenDt = 0;
+@@ -47,11 +47,11 @@ namespace supra
+ 			new Container<LocationType>(LocationGpu, &default_queue, parameters.getRxElementYs()));
+ 	}
+ 
+-	RxBeamformerCuda::~RxBeamformerCuda()
++	RxBeamformerSYCL::~RxBeamformerSYCL()
+ 	{
+ 	}
+ 
+-	void RxBeamformerCuda::convertToDtSpace(double dt, double speedOfSoundMMperS, size_t numTransducerElements) const
++	void RxBeamformerSYCL::convertToDtSpace(double dt, double speedOfSoundMMperS, size_t numTransducerElements) const
+ 	{
+ 		if (m_lastSeenDt != dt || m_speedOfSoundMMperS != speedOfSoundMMperS)
+ 		{
+@@ -574,8 +574,8 @@ namespace supra
+ 	}
+ 
+ 	template <typename ChannelDataType, typename ImageDataType>
+-	shared_ptr<USImage> RxBeamformerCuda::performRxBeamforming(
+-		RxBeamformerCuda::RxSampleBeamformer sampleBeamformer,
++	shared_ptr<USImage> RxBeamformerSYCL::performRxBeamforming(
++		RxBeamformerSYCL::RxSampleBeamformer sampleBeamformer,
+ 		shared_ptr<const USRawData> rawData,
+ 		double fNumber,
+ 		double speedOfSoundMMperS,
+@@ -703,8 +703,8 @@ namespace supra
+ 	}
+ 
+ 	template
+-	shared_ptr<USImage> RxBeamformerCuda::performRxBeamforming<int16_t, int16_t>(
+-		RxBeamformerCuda::RxSampleBeamformer sampleBeamformer,
++	shared_ptr<USImage> RxBeamformerSYCL::performRxBeamforming<int16_t, int16_t>(
++		RxBeamformerSYCL::RxSampleBeamformer sampleBeamformer,
+ 		shared_ptr<const USRawData> rawData,
+ 		double fNumber,
+ 		double speedOfSoundMMperS,
+@@ -713,8 +713,8 @@ namespace supra
+ 		bool interpolateBetweenTransmits,
+ 		int32_t additionalOffset) const;
+ 	template
+-	shared_ptr<USImage> RxBeamformerCuda::performRxBeamforming<int16_t, float>(
+-		RxBeamformerCuda::RxSampleBeamformer sampleBeamformer,
++	shared_ptr<USImage> RxBeamformerSYCL::performRxBeamforming<int16_t, float>(
++		RxBeamformerSYCL::RxSampleBeamformer sampleBeamformer,
+ 		shared_ptr<const USRawData> rawData,
+ 		double fNumber,
+ 		double speedOfSoundMMperS,
+@@ -723,8 +723,8 @@ namespace supra
+ 		bool interpolateBetweenTransmits,
+ 		int32_t additionalOffset) const;
+ 	template
+-	shared_ptr<USImage> RxBeamformerCuda::performRxBeamforming<float, int16_t>(
+-		RxBeamformerCuda::RxSampleBeamformer sampleBeamformer,
++	shared_ptr<USImage> RxBeamformerSYCL::performRxBeamforming<float, int16_t>(
++		RxBeamformerSYCL::RxSampleBeamformer sampleBeamformer,
+ 		shared_ptr<const USRawData> rawData,
+ 		double fNumber,
+ 		double speedOfSoundMMperS,
+@@ -733,8 +733,8 @@ namespace supra
+ 		bool interpolateBetweenTransmits,
+ 		int32_t additionalOffset) const;
+ 	template
+-	shared_ptr<USImage> RxBeamformerCuda::performRxBeamforming<float, float>(
+-		RxBeamformerCuda::RxSampleBeamformer sampleBeamformer,
++	shared_ptr<USImage> RxBeamformerSYCL::performRxBeamforming<float, float>(
++		RxBeamformerSYCL::RxSampleBeamformer sampleBeamformer,
+ 		shared_ptr<const USRawData> rawData,
+ 		double fNumber,
+ 		double speedOfSoundMMperS,
+diff --git a/src/SupraLib/Beamformer/RxBeamformerCuda.h b/src/SupraLib/Beamformer/RxBeamformerSYCL.h
+similarity index 91%
+rename from src/SupraLib/Beamformer/RxBeamformerCuda.h
+rename to src/SupraLib/Beamformer/RxBeamformerSYCL.h
+index 5d9f3cf..90864da 100644
+--- a/src/SupraLib/Beamformer/RxBeamformerCuda.h
++++ b/src/SupraLib/Beamformer/RxBeamformerSYCL.h
+@@ -9,8 +9,8 @@
+ // 
+ // ================================================================================================
+ 
+-#ifndef __RXBEAMFORMERCUDA_H__
+-#define __RXBEAMFORMERCUDA_H__
++#ifndef __RxBeamformerSYCL_H__
++#define __RxBeamformerSYCL_H__
+ 
+ #include "USImage.h"
+ #include "WindowFunction.h"
+@@ -25,7 +25,7 @@ namespace supra
+ 
+ 	using std::shared_ptr;
+ 
+-	class RxBeamformerCuda
++	class RxBeamformerSYCL
+ 	{
+ 	public:
+ 		enum RxSampleBeamformer {
+@@ -35,8 +35,8 @@ namespace supra
+ 			INVALID
+ 		};
+ 
+-		RxBeamformerCuda(const RxBeamformerParameters& parameters);
+-		~RxBeamformerCuda();
++		RxBeamformerSYCL(const RxBeamformerParameters& parameters);
++		~RxBeamformerSYCL();
+ 
+ 		// perform the receive beamforming
+ 		template <typename ChannelDataType, typename ImageDataType>
+@@ -78,4 +78,4 @@ namespace supra
+ 	};
+ }
+ 
+-#endif //!__RXBEAMFORMERCUDA_H__
++#endif //!__RxBeamformerSYCL_H__
+diff --git a/src/SupraLib/Beamformer/ScanConverter.dp.cpp b/src/SupraLib/Beamformer/ScanConverter.dp.cpp
+index bd52928..0ab0378 100644
+--- a/src/SupraLib/Beamformer/ScanConverter.dp.cpp
++++ b/src/SupraLib/Beamformer/ScanConverter.dp.cpp
+@@ -28,7 +28,7 @@
+ #include <dpct/dpct.hpp>
+ #include "ScanConverter.h"
+ #include <cassert>
+-#include <utilities/cudaUtility.h>
++#include <utilities/syclUtility.h>
+ #include <utilities/Logging.h>
+ 
+ #include <dpct/dpstd_utils.hpp>
+diff --git a/src/SupraLib/Beamformer/WindowFunction.h b/src/SupraLib/Beamformer/WindowFunction.h
+index 9ecc632..0049920 100644
+--- a/src/SupraLib/Beamformer/WindowFunction.h
++++ b/src/SupraLib/Beamformer/WindowFunction.h
+@@ -21,7 +21,7 @@
+ #include <memory>
+ #include <Container.h>
+ #include <utilities/utility.h>
+-#include <utilities/cudaUtility.h>
++#include <utilities/syclUtility.h>
+ 
+ namespace supra
+ {
+diff --git a/src/SupraLib/CMakeLists.txt b/src/SupraLib/CMakeLists.txt
+index 78af248..021006f 100644
+--- a/src/SupraLib/CMakeLists.txt
++++ b/src/SupraLib/CMakeLists.txt
+@@ -176,7 +176,7 @@ SET(SUPRA_Lib_HEADERS
+ 	TemporalOffsetNode.h
+ 	InterfaceFactory.h
+ 	utilities/utility.h
+-	utilities/cudaUtility.h
++	utilities/syclUtility.h
+ 	utilities/Buffer.h
+ 	utilities/Logging.h
+ 	utilities/CallFrequency.h
+@@ -283,7 +283,7 @@ IF(SUPRA_BEAMFORMER)
+ 		#Beamformer/ScanConverter.cu
+ 		#Beamformer/TemporalFilter.cu
+ 		#Beamformer/RawDelay.cu
+-		Beamformer/RxBeamformerCuda.dp.cpp
++		Beamformer/RxBeamformerSYCL.dp.cpp
+ 		Beamformer/HilbertFirEnvelope.dp.cpp
+ 		Beamformer/LogCompressor.dp.cpp
+ 		Beamformer/ScanConverter.dp.cpp
+@@ -292,7 +292,7 @@ IF(SUPRA_BEAMFORMER)
+ 		Beamformer/helper.h
+ 		Beamformer/Sequencer.h
+ 		Beamformer/Beamformer.h
+-		Beamformer/RxBeamformerCuda.h
++		Beamformer/RxBeamformerSYCL.h
+ 		Beamformer/RxBeamformerCommon.h
+ 		Beamformer/RxSampleBeamformerDelayAndSum.h
+ 		Beamformer/RxSampleBeamformerDelayAndStdDev.h
+diff --git a/src/SupraLib/Container.h b/src/SupraLib/Container.h
+index e9f1b95..1e3cb84 100644
+--- a/src/SupraLib/Container.h
++++ b/src/SupraLib/Container.h
+@@ -16,7 +16,7 @@
+ #include <dpct/dpct.hpp>
+ #include "ContainerFactory.h"
+ #ifdef HAVE_CUDA
+-#include "utilities/cudaUtility.h"
++#include "utilities/syclUtility.h"
+ #endif
+ #include "utilities/DataType.h"
+ 
+@@ -139,7 +139,7 @@ namespace supra
+ 			auto ret = 0;
+ 			if (ret != 0 && ret != 600 && ret != 4)
+ 			{
+-				cudaSafeCall(ret);
++				syclSafeCall(ret);
+ 			}
+ 			// If the driver is currently unloading, we cannot free the memory in any way. Exit will clean up.
+ 			else if (ret != 4)
+@@ -237,13 +237,13 @@ namespace supra
+ 			auto funcPointer = new std::function<void(sycl::queue*, int)>(func);
+ 			std::async([&]() {
+ 					m_associatedStream->wait();
+-					(Container<T>::cudaDeleteCallback)(m_associatedStream, 0, funcPointer);
++					(Container<T>::syclDeleteCallback)(m_associatedStream, 0, funcPointer);
+ 			});
+ 		}
+ #endif
+ 
+ #ifdef HAVE_CUDA
+-		static void cudaDeleteCallback(sycl::queue* stream, int status, void* userData)
++		static void syclDeleteCallback(sycl::queue* stream, int status, void* userData)
+ 		{
+ 			std::unique_ptr<std::function<void(sycl::queue*, int)>> func =
+ 				std::unique_ptr<std::function<void(sycl::queue*, int)>>(
+diff --git a/src/SupraLib/ContainerFactory.h b/src/SupraLib/ContainerFactory.h
+index 80be76c..ad9ebed 100644
+--- a/src/SupraLib/ContainerFactory.h
++++ b/src/SupraLib/ContainerFactory.h
+@@ -15,7 +15,7 @@
+ #ifdef HAVE_CUDA
+ #include <CL/sycl.hpp>
+ #include <dpct/dpct.hpp>
+-#include "utilities/cudaUtility.h"
++#include "utilities/syclUtility.h"
+ #endif
+ 
+ #include <vector>
+diff --git a/src/SupraLib/utilities/cudaUtility.h b/src/SupraLib/utilities/syclUtility.h
+similarity index 87%
+rename from src/SupraLib/utilities/cudaUtility.h
+rename to src/SupraLib/utilities/syclUtility.h
+index 7287774..885492c 100644
+--- a/src/SupraLib/utilities/cudaUtility.h
++++ b/src/SupraLib/utilities/syclUtility.h
+@@ -9,8 +9,8 @@
+ // 
+ // ================================================================================================
+ 
+-#ifndef __CUDAUTILITY_H__
+-#define __CUDAUTILITY_H__
++#ifndef __SYCLUTILITY_H__
++#define __SYCLUTILITY_H__
+ 
+ #include <CL/sycl.hpp>
+ #include <dpct/dpct.hpp>
+@@ -54,18 +54,18 @@ namespace supra
+ 	#define FUNCNAME_PORTABLE __FUNCSIG__
+ 	#endif
+ 
+-	/// Verifies a cuda call returned "cudaSuccess". Prints error message otherwise.
++	/// Verifies a sycl call returned "syclSuccess". Prints error message otherwise.
+ 	/// returns true if no error occured, false otherwise.
+-	#define cudaSafeCall(_err_) cudaSafeCall2(_err_, __FILE__, __LINE__, FUNCNAME_PORTABLE)
++	#define syclSafeCall(_err_) syclSafeCall2(_err_, __FILE__, __LINE__, FUNCNAME_PORTABLE)
+ 
+-	/// Verifies a cuda call returned "cudaSuccess". Prints error message otherwise.
+-	/// returns true if no error occured, false otherwise. Calles by cudaSafeCall
+-	inline bool cudaSafeCall2(int err, const char* file, int line, const char* func) {
++	/// Verifies a sycl call returned "syclSuccess". Prints error message otherwise.
++	/// returns true if no error occured, false otherwise. Calles by syclSafeCall
++	inline bool syclSafeCall2(int err, const char* file, int line, const char* func) {
+ 
+ 		
+ 		if (0 != err) {
+ 			char buf[1024];
+-			sprintf(buf, "CUDA Error (in \"%s\", Line: %d, %s): %d - %s\n", file, line, func, err, "cudaGetErrorString not supported" /*cudaGetErrorString(err)*/);
++			sprintf(buf, "sycl Error (in \"%s\", Line: %d, %s): %d - %s\n", file, line, func, err, "syclGetErrorString not supported" /*syclGetErrorString(err)*/);
+ 			printf("%s", buf);
+ 			logging::log_error(buf);
+ 			return false;
+@@ -157,4 +157,4 @@ namespace supra
+ 	};
+ }
+ 
+-#endif // !__CUDAUTILITY_H__
++#endif // !__SYCLUTILITY_H__
+diff --git a/src/SupraLib/vec.h b/src/SupraLib/vec.h
+index 62cece3..1a79ca9 100644
+--- a/src/SupraLib/vec.h
++++ b/src/SupraLib/vec.h
+@@ -15,7 +15,7 @@
+ #include <CL/sycl.hpp>
+ #include <dpct/dpct.hpp>
+ #include "utilities/utility.h"
+-#include "utilities/cudaUtility.h"
++#include "utilities/syclUtility.h"
+ #include <cmath>
+ 
+ namespace supra
+-- 
+2.17.1
+
