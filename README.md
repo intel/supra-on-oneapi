@@ -1,17 +1,17 @@
-# This project provides you the patches to enable SUPRA on Intel GPU using oneAPI
-## Note: Intel oneAPI is still in Beta stage, this project based on oneAPI beta07 is for reference only. It should not be used for production.
+# This project provides you the patches to enable SUPRA on Intel GPU using Intel(R) oneAPI Base Toolkit beta07.
+## Note: Intel(R) oneAPI Base Toolkit is still in Beta stage, this project based on Intel(R) oneAPI Base Toolkit beta07 is for reference only. It should not be used for production.
 
 ## 1. Project Introduction
 ### (1) Envrionment setup 
 
-Please refer to Intel oneAPI installation guide: https://software.intel.com/content/www/us/en/develop/articles/installation-guide-for-intel-oneapi-toolkits.html
+Please refer to Intel(R) oneAPI installation guide: https://software.intel.com/content/www/us/en/develop/articles/installation-guide-for-intel-oneapi-toolkits.html
 
 
-For now, please use oneAPI beta07 version. use below command to download oneAPI beta07 basekit: 
+For now, please use Intel(R) oneAPI Base Toolkit beta07 version. use below command to download Intel(R) oneAPI Base Toolkit beta07: 
 
 `wget http://registrationcenter-download.intel.com/akdlm/irc_nas/16702/l_BaseKit_b_2021.1.7.1506_offline.tar.gz`
 
-For oneAPI beat07, Below compute-runtime version should be installed:
+For Intel(R) oneAPI Base Toolkit beat07, Below compute-runtime version should be installed:
 
 `https://github.com/intel/compute-runtime/releases/tag/20.27.17231`
 
@@ -20,7 +20,7 @@ OS: Ubuntu 18.04
 
 Hardware: Intel CPU with Gen9 or later Graphics.
 
-This project was tested on Intel i7-8700K CPU with Intel(R) UHD Graphics 630, please refer https://ark.intel.com/content/www/us/en/ark/products/126684/intel-core-i7-8700k-processor-12m-cache-up-to-4-70-ghz.html
+This project was tested on Intel(R) i7-8700K CPU with Intel(R) UHD Graphics 630, please refer https://ark.intel.com/content/www/us/en/ark/products/126684/intel-core-i7-8700k-processor-12m-cache-up-to-4-70-ghz.html
 
 
 ### 2. Patch information
@@ -79,11 +79,11 @@ Build and Run supra demo, in supra directory:
 `cd build`
 
 
-Setup oneAPI eviroment:
+Setup eviroment:
 
 `source /opt/intel/inteloneapi/setvars.sh`
 
-For oneAPI beta07 version, you need change the $PATH, follow this two steps:
+For Intel(R) oneAPI Base Toolkit beta07 version, you need change the $PATH, follow this two steps:
 
 `echo $PATH`
 
