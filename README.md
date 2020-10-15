@@ -34,14 +34,13 @@ This project was tested on Intel(R) i7-8700K CPU with Intel(R) UHD Graphics 630,
 
 ## (2) Basic steps
 
-Install 3rd libraries:
+Install 3rd libraries in your machine:
 
 `apt-get install cmake cmake-gui qt5-default libtbb-dev libopenigtlink-dev git`
 
+Download this repo to your machine:
 
-Download this reposity to your machine:
-
-`git clone  https://gitlab.devtools.intel.com/wangyon1/supra_for_oneapi_patch.git`
+`git clone https://github.com/intel/supra-on-oneapi.git`
 
 Download SUPRA form github:
 
