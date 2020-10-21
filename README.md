@@ -1,5 +1,5 @@
 # This project provides you the patches to enable SUPRA on Intel GPU using Intel(R) oneAPI Base Toolkit beta07.
-## Note: Intel(R) oneAPI Base Toolkit is still in Beta stage, this project based on Intel(R) oneAPI Base Toolkit beta07 is for reference only. It should not be used for production.
+### Note: Intel(R) oneAPI Base Toolkit is still in Beta stage, this project based on Intel(R) oneAPI Base Toolkit beta07 is for reference only. It should not be used for production.
 
 ## 1. Project Introduction
 ### (1) Envrionment setup 
@@ -23,7 +23,7 @@ Hardware: Intel CPU with Gen9 or later Graphics.
 This project was tested on Intel(R) i7-8700K CPU with Intel(R) UHD Graphics 630, please refer https://ark.intel.com/content/www/us/en/ark/products/126684/intel-core-i7-8700k-processor-12m-cache-up-to-4-70-ghz.html
 
 
-### 2. Patch information
+### (2) Patch information
     The patch 0001-* describes the Intel(R) DPC++ Compatibility Tool migrates CUDA file to DPC++ file. Apply patch 0001-*, you will see a oneapi/ folder which contains migrated DPC++ files and related header files.
     The patch 0002-* describes using DPC++ file replace original CUDA file in src/SupraLib/ folder.
     The patch 0003-* describes modification to the DPC++ files. Apply patch 0001-*, 0002-* and 0003-*, you can build and run SUPRA successfully.
@@ -32,7 +32,16 @@ This project was tested on Intel(R) i7-8700K CPU with Intel(R) UHD Graphics 630,
 
 ### 
 
-## (2) Basic steps
+## 2 Project build steps
+There are 2 ways you can build and run our project. the jupyter notebook provides simple and quick method to enable SUPRA. if you want to know complete build process, you can follow the Linux terminal method to compile and run, which also won't take too long.
+
+### (1) Jupyter notebook 
+
+Clone this repo to your local machine, go to supra-jupyter/ folder, launch your jupyter notebook and open supra-jupyter.ipynb in your jupyter notebook. Follow the 
+hints, you will enable SUPRA with just few clicks.
+
+
+### (2) Linux terminal
 
 Install 3rd libraries in your machine:
 
