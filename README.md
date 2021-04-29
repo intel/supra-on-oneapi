@@ -7,15 +7,6 @@
 Please refer to Intel(R) oneAPI installation guide: https://software.intel.com/content/www/us/en/develop/articles/installation-guide-for-intel-oneapi-toolkits.html
 
 
-For now, please use Intel(R) oneAPI Base Toolkit beta07 version. use below command to download Intel(R) oneAPI Base Toolkit beta07: 
-
-`wget http://registrationcenter-download.intel.com/akdlm/irc_nas/16702/l_BaseKit_b_2021.1.7.1506_offline.tar.gz`
-
-For Intel(R) oneAPI Base Toolkit beat07, Below compute-runtime version should be installed:
-
-`https://github.com/intel/compute-runtime/releases/tag/20.27.17231`
-
-
 OS: Ubuntu 18.04
 
 Hardware: Intel CPU with Gen9 or later Graphics.
@@ -25,10 +16,9 @@ This project was tested on Intel(R) i7-8700K CPU with Intel(R) UHD Graphics 630,
 
 ### (2) Patch information
     The patch 0001-* describes the Intel(R) DPC++ Compatibility Tool migrates CUDA file to DPC++ file. Apply patch 0001-*, you will see a oneapi/ folder which contains migrated DPC++ files and related header files.
-    The patch 0002-* describes using DPC++ file replace original CUDA file in src/SupraLib/ folder.
-    The patch 0003-* describes modification to the DPC++ files. Apply patch 0001-*, 0002-* and 0003-*, you can build and run SUPRA successfully.
-    The patch 0004-* describes optimization to BeamformingNode and HilbertEnvelopeNode. Apply patch 0004-*, the BeamformingNode and HilbertEnvelopeNode performance will improve.
-    The patch 0005-* do code clean, using sycl in file name and variable name.
+    The patch 0002-* describes modification to the DPC++ files. Apply patch 0001-* and 0002-*, you can build and run SUPRA successfully.
+    The patch 0003-* describes optimization to BeamformingNode and HilbertEnvelopeNode. Apply patch 0003-*, the BeamformingNode and HilbertEnvelopeNode performance will improve.
+    The patch 0004-* do code clean, using sycl in file name and variable name.
 
 ### 
 
@@ -117,7 +107,7 @@ Use opencl as low-level library(optional):
 
 Configure project:
 
-`CC=clang CXX=dpcpp cmake ..`
+`CC=clang CXX=dpcpp CXXFLAGS="-L${TBBROOT}/lib/intel64/gcc4.8" cmake ..`
 
 Build:
 
@@ -151,6 +141,6 @@ Check the performance, open supra.log in the build directory:
 
 `cat supra.log` 
 
-it will show every node performance and the average performance in Millisecond.
+it will show every node performance performance in Millisecond.
 
 ## 3. Additional Note
