@@ -1,36 +1,34 @@
-From 3204451b3e7e975b098c2ad70bbd425951e30083 Mon Sep 17 00:00:00 2001
+From b85d048f09ee7a824dc8251c0566a695d2a61ee8 Mon Sep 17 00:00:00 2001
 From: wangyon1 <yong4.wang@intel.com>
-Date: Sun, 6 Sep 2020 23:33:27 +0800
-Subject: [PATCH 4/4] optimization code
+Date: Thu, 4 Feb 2021 17:00:16 +0800
+Subject: [PATCH 3/4] Do optimizaton
 
 ---
- .../Beamformer/HilbertFirEnvelope.dp.cpp      |  56 +++++-
+ .../Beamformer/HilbertFirEnvelope.dp.cpp      |  53 +++++-
  src/SupraLib/Beamformer/RxBeamformerCommon.h  |   6 +
- .../Beamformer/RxBeamformerCuda.dp.cpp        | 102 ++++++++++-
+ .../Beamformer/RxBeamformerCuda.dp.cpp        | 104 +++++++++++-
  .../RxSampleBeamformerDelayAndSum.h           | 105 ++++++++++++
- src/SupraLib/Beamformer/WindowFunction.h      |   9 +-
+ src/SupraLib/Beamformer/WindowFunction.h      |   8 +-
  src/SupraLib/Beamformer/helper.h              | 159 ++++++++++++++++++
- src/SupraLib/CMakeLists.txt                   |   1 +
- 7 files changed, 427 insertions(+), 11 deletions(-)
+ 6 files changed, 425 insertions(+), 10 deletions(-)
  create mode 100644 src/SupraLib/Beamformer/helper.h
 
 diff --git a/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp b/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
-index 4b7cac2..01f31cd 100644
+index af16284..99cf7be 100644
 --- a/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
 +++ b/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
-@@ -20,6 +20,7 @@
- #include <dpstd/algorithm>
- 
- #include <algorithm>
+@@ -14,6 +14,7 @@
+ #include "HilbertFirEnvelope.h"
+ #include <utilities/utility.h>
+ #include <utilities/FirFilterFactory.h>
 +#include "helper.h"
  
- using namespace std;
- using namespace std::placeholders;
-@@ -62,6 +63,57 @@ namespace supra
+ #include <dpct/dpl_utils.hpp>
+ #include <oneapi/dpl/execution>
+@@ -62,6 +63,54 @@ namespace supra
  
  	}
  
-+
 +	const int H_VEC_SIZE = 4;
 +	template <typename InputType, typename OutputType>
 +	void vec_kernelFilterDemodulation(
@@ -79,35 +77,33 @@ index 4b7cac2..01f31cd 100644
 +	}
 +
 +
-+
-+
  	HilbertFirEnvelope::HilbertFirEnvelope(size_t filterLength)
  		: m_filterLength(filterLength)
  		, m_hilbertFilter(nullptr)
-@@ -91,7 +143,7 @@ namespace supra
- 		sycl::range<3> blockSizeFilter(16, 8, 1);
- 		sycl::range<3> gridSizeFilter(
- 	  		static_cast<unsigned int>((numScanlines + blockSizeFilter[0] - 1) /
--								blockSizeFilter[0]),
-+								blockSizeFilter[0] / H_VEC_SIZE),
- 	  		static_cast<unsigned int>((numSamples + blockSizeFilter[1] - 1) /
- 								blockSizeFilter[1]),1);
- 		inImageData->getStream()->wait();
-@@ -111,7 +163,7 @@ namespace supra
- 			cgh.parallel_for(
- 				sycl::nd_range<3>(sycl::range<3>(dpct_global_range.get(2), dpct_global_range.get(1), dpct_global_range.get(0)),
- 								  sycl::range<3>(blockSizeFilter.get(2), blockSizeFilter.get(1), blockSizeFilter.get(0))),
--				[ = ](sycl::nd_item<3> item_ct1) { kernelFilterDemodulation(m_inImageData_t, m_hilbertFilter_t, m_pEnv_t, numSamples, numScanlines, m_filterLength_ct5, item_ct1); });
-+				[ = ](sycl::nd_item<3> item_ct1) { vec_kernelFilterDemodulation(m_inImageData_t, m_hilbertFilter_t, m_pEnv_t, numSamples, numScanlines, m_filterLength_ct5, item_ct1); });
- 		});
+@@ -90,7 +139,7 @@ namespace supra
+ 		auto pEnv = make_shared<Container<OutputType> >(LocationGpu, inImageData->getStream(), numScanlines*numSamples);
+ 		sycl::range<3> blockSizeFilter(1, 8, 16);
+ 		sycl::range<3> gridSizeFilter(1, static_cast<unsigned int>((numSamples + blockSizeFilter[ 1 ] - 1) / blockSizeFilter[ 1 ]),
+-									  static_cast<unsigned int>((numScanlines + blockSizeFilter[ 2 ] - 1) / blockSizeFilter[ 2 ]));
++									  static_cast<unsigned int>((numScanlines + blockSizeFilter[ 2 ] - 1) / blockSizeFilter[ 2 ] / H_VEC_SIZE));
  
- 		inImageData->getStream()->wait();
+ 				static long hilbert_call_count = 0;
+ 
+@@ -101,7 +150,7 @@ namespace supra
+ 						auto m_filterLength_ct5 = ( int )m_filterLength;
+ 
+ 						cgh.parallel_for(sycl::nd_range<3>(gridSizeFilter * blockSizeFilter, blockSizeFilter), [ = ](sycl::nd_item<3> item_ct1) {
+-								kernelFilterDemodulation(inImageData_get_ct0, m_hilbertFilter_get_ct1, pEnv_get_ct2, numSamples, numScanlines, m_filterLength_ct5, item_ct1);
++								vec_kernelFilterDemodulation(inImageData_get_ct0, m_hilbertFilter_get_ct1, pEnv_get_ct2, numSamples, numScanlines, m_filterLength_ct5, item_ct1);
+ 						});
+ 				});
+ 
 diff --git a/src/SupraLib/Beamformer/RxBeamformerCommon.h b/src/SupraLib/Beamformer/RxBeamformerCommon.h
-index cb0eaa3..495a44a 100644
+index f86b5b9..35b05e0 100644
 --- a/src/SupraLib/Beamformer/RxBeamformerCommon.h
 +++ b/src/SupraLib/Beamformer/RxBeamformerCommon.h
-@@ -38,6 +38,12 @@ namespace supra
- 		return sycl::sqrt(squ(x_element - (x + dirX * d)) + squ(z_element - (z + dirZ * d)) + squ(dirY * d)) + d;
+@@ -34,6 +34,12 @@ namespace supra
+ 			(dirY*z)*(dirY*z)) + z;
  	}
  
 +	const int Vec_SIZE = 8;
@@ -116,25 +112,18 @@ index cb0eaa3..495a44a 100644
 +		return sycl::sqrt(((x_element - (x + dirX * z)) * (x_element - (x + dirX * z)) + (dirY * z) * (dirY * z))) + z;
 +	}
 +
- 	// distance has to be normalized to [-1, 1] (inclusive)
- 	inline WindowFunctionGpu::ElementType
- 		computeWindow3D(const WindowFunctionGpu& windowFunction, const vec2f& distance)
+ 	template <typename T>
+ 	inline T computeDelayDTSPACE3D_D(T dirX, T dirY, T dirZ, T x_element, T z_element, T x, T z, T d)
+ 	{
 diff --git a/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp b/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
-index 6bc6ad8..a422d53 100644
+index d97c382..7c7a4b7 100644
 --- a/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
 +++ b/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
-@@ -217,7 +217,6 @@ namespace supra
- 	}
- 
- 	template <class SampleBeamformer, bool interpolateRFlines, bool interpolateBetweenTransmits, typename RFType, typename ResultType, typename LocationType>
--	
- 		void rxBeamformingDTSPACEKernel(
- 			size_t numTransducerElements,
- 			size_t numReceivedChannels,
-@@ -305,6 +304,84 @@ namespace supra
+@@ -305,6 +305,87 @@ namespace supra
  		}
  	}
  
++
 +	const int ROW_SIZE = 2;
 +	template <class SampleBeamformer, bool interpolateRFlines, bool interpolateBetweenTransmits, typename RFType, typename ResultType, typename LocationType>
 +	void mixed_rxBeamformingDTSPACEKernel(size_t numTransducerElements, size_t numReceivedChannels, size_t numTimesteps, const RFType* __restrict__ RF, size_t numTxScanlines, size_t numRxScanlines,
@@ -197,7 +186,7 @@ index 6bc6ad8..a422d53 100644
 +
 +					#pragma unroll
 +					for (int i = 0; i < row_size; i++) {
-+						LocationType invMaxElementDistance = 1 / sycl::min(aDT[i], maxElementDistance);
++						LocationType invMaxElementDistance = 1.f / sycl::min(aDT[i], maxElementDistance);
 +						sInterp[i] = SampleBeamformer::template vec_sampleBeamform2D<interpolateRFlines, RFType, float, LocationType>(txParams, RF, numTransducerElements, 
 +						numReceivedChannels, numTimesteps, x_elemsDT, scanline_x, dirX, dirY, dirZ, aDT[i], d[i], invMaxElementDistance , speedOfSound, dt, additionalOffset, 
 +						windowFunction, mdataGpu);
@@ -213,10 +202,12 @@ index 6bc6ad8..a422d53 100644
 +		}
 +	}
 +
++
++
  	template <class SampleBeamformer, unsigned int maxWindowFunctionNumel, typename RFType, typename ResultType, typename LocationType>
  	void rxBeamformingDTspaceCuda3D(bool interpolateRFlines, bool interpolateBetweenTransmits, size_t numTransducerElements, vec2s elementLayout, size_t numReceivedChannels, size_t numTimesteps,
  									const RFType* RF, size_t numTxScanlines, size_t numRxScanlines, const ScanlineRxParameters3D* scanlines, size_t numZs, const LocationType* zs,
-@@ -404,11 +481,11 @@ namespace supra
+@@ -395,10 +476,11 @@ namespace supra
  	template <class SampleBeamformer, typename RFType, typename ResultType, typename LocationType>
  	void rxBeamformingDTspaceCuda(bool interpolateRFlines, bool interpolateBetweenTransmits, size_t numTransducerElements, size_t numReceivedChannels, size_t numTimesteps, const RFType* RF,
  								  size_t numTxScanlines, size_t numRxScanlines, const ScanlineRxParameters3D* scanlines, size_t numZs, const LocationType* zs, const LocationType* x_elems,
@@ -224,30 +215,29 @@ index 6bc6ad8..a422d53 100644
 +								  LocationType speedOfSound, LocationType dt, uint32_t additionalOffset, LocationType F, const WindowFunctionGpu windowFunction, sycl::queue* stream, ResultType* s, LocationType *mdataGpu)
  	{
  		sycl::range<3> blockSize(1, 256, 1);
- 		sycl::range<3> gridSize(static_cast<unsigned int>((numRxScanlines + blockSize[ 0 ] - 1) / blockSize[ 0 ]),
--			static_cast<unsigned int>((numZs + blockSize[ 1 ] - 1) / blockSize[ 1 ]), 1);
-+			static_cast<unsigned int>((numZs + blockSize[ 1 ] - 1) / blockSize[ 1 ] / ROW_SIZE), 1);
- 		
+-		sycl::range<3> gridSize(1, static_cast<unsigned int>((numZs + blockSize[ 1 ] - 1) / blockSize[ 1 ]), static_cast<unsigned int>((numRxScanlines + blockSize[ 2 ] - 1) / blockSize[ 2 ]));
++		sycl::range<3> gridSize(1, static_cast<unsigned int>((numZs + blockSize[ 1 ] - 1) / blockSize[ 1 ] / ROW_SIZE), 
++								static_cast<unsigned int>((numRxScanlines + blockSize[ 2 ] - 1) / blockSize[ 2 ]));
  		if (interpolateRFlines)
  		{
-@@ -437,8 +514,14 @@ namespace supra
- 					cgh.parallel_for(sycl::nd_range<3>(sycl::range<3>(dpct_global_range.get(2), dpct_global_range.get(1), dpct_global_range.get(0)),
- 													   sycl::range<3>(blockSize.get(2), blockSize.get(1), blockSize.get(0))),
- 									 [ = ](sycl::nd_item<3> item_ct1) {
--										 rxBeamformingDTSPACEKernel<SampleBeamformer, true, false>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines,
--																								   scanlines, numZs, zs, x_elems, speedOfSound, dt, additionalOffset, F, windowFunction, s, item_ct1);
-+
-+										// we use optimized kernal function.
-+										/*rxBeamformingDTSPACEKernel<SampleBeamformer, true, false>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines,
-+																								   scanlines, numZs, zs, x_elems, speedOfSound, dt, additionalOffset, F, windowFunction, s, item_ct1);*/
-+									 
-+									 	mixed_rxBeamformingDTSPACEKernel<SampleBeamformer, true, false>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines,
+ 			if (interpolateBetweenTransmits)
+@@ -417,8 +499,13 @@ namespace supra
+ 				
+ 						sycl::event beam_event = stream->submit([ & ](sycl::handler& cgh) {
+ 							  cgh.parallel_for(sycl::nd_range<3>(gridSize * blockSize, blockSize), [ = ](sycl::nd_item<3> item_ct1) {
+-									rxBeamformingDTSPACEKernel<SampleBeamformer, true, false>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines, scanlines,
+-																							  numZs, zs, x_elems, speedOfSound, dt, additionalOffset, F, windowFunction, s, item_ct1);
++									/*rxBeamformingDTSPACEKernel<SampleBeamformer, true, false>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines, scanlines,
++																							  numZs, zs, x_elems, speedOfSound, dt, additionalOffset, F, windowFunction, s, item_ct1);*/
++							  
++							  		mixed_rxBeamformingDTSPACEKernel<SampleBeamformer, true, false>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines,
 +																								   scanlines, numZs, zs, x_elems, speedOfSound, dt, additionalOffset, F, &windowFunction, s, item_ct1, mdataGpu);
 +									 
- 									 });
- 				});
- 				stream->wait();
-@@ -518,6 +601,12 @@ namespace supra
++							  
+ 							  });
+ 						});
+ 
+@@ -480,6 +567,12 @@ namespace supra
  			m_windowFunction = std::unique_ptr<WindowFunction>(new WindowFunction(windowType, windowParameter, m_windowFunctionNumEntries));
  		}
  
@@ -260,7 +250,7 @@ index 6bc6ad8..a422d53 100644
  		auto beamformingFunction3D = &rxBeamformingDTspaceCuda3D<RxSampleBeamformerDelayAndSum, m_windowFunctionNumEntries, ChannelDataType, ImageDataType, LocationType>;
  		auto beamformingFunction2D = &rxBeamformingDTspaceCuda<RxSampleBeamformerDelayAndSum, ChannelDataType, ImageDataType, LocationType>;
  		
-@@ -588,7 +677,8 @@ namespace supra
+@@ -550,7 +643,8 @@ namespace supra
  				static_cast<LocationType>(fNumber),
  				*(m_windowFunction->getGpu()),
  				gRawData->getStream(),
@@ -271,7 +261,7 @@ index 6bc6ad8..a422d53 100644
  		}
  
 diff --git a/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndSum.h b/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndSum.h
-index 26c8b00..908ea42 100644
+index f5330d5..b9c574d 100644
 --- a/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndSum.h
 +++ b/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndSum.h
 @@ -17,6 +17,7 @@
@@ -282,7 +272,7 @@ index 26c8b00..908ea42 100644
  
  //TODO ALL ELEMENT/SCANLINE Y positons are actually Z! Change all variable names accordingly
  namespace supra
-@@ -179,6 +180,110 @@ namespace supra
+@@ -180,6 +181,110 @@ namespace supra
  				return 0;
  			}
  		}
@@ -394,20 +384,19 @@ index 26c8b00..908ea42 100644
  }
  
 diff --git a/src/SupraLib/Beamformer/WindowFunction.h b/src/SupraLib/Beamformer/WindowFunction.h
-index 60ac6ed..9ecc632 100644
+index 4f69c89..71c2267 100644
 --- a/src/SupraLib/Beamformer/WindowFunction.h
 +++ b/src/SupraLib/Beamformer/WindowFunction.h
-@@ -88,7 +88,8 @@ namespace supra
+@@ -88,7 +88,7 @@ namespace supra
  		{
  			return m_numEntriesPerFunction;
  		}
 -
-+		// to access data, move this pulic
 +		float m_scale;
  	private:
  		friend WindowFunction;
  		WindowFunctionGpu(size_t numEntriesPerFunction, const ElementType* data)
-@@ -96,7 +97,7 @@ namespace supra
+@@ -96,7 +96,7 @@ namespace supra
  			, m_data(data)
  			, m_scale(static_cast<float>(numEntriesPerFunction - 1)*0.5f) {};
  
@@ -416,16 +405,16 @@ index 60ac6ed..9ecc632 100644
  		uint32_t m_numEntriesPerFunction;
  		const ElementType* m_data;
  	};
-@@ -136,9 +137,11 @@ namespace supra
+@@ -136,9 +136,11 @@ namespace supra
  				return 0;
  			}
  		}
 +
-+		// To access data directly, move this to public
 +		std::vector<ElementType> m_data;
  	private:
  		size_t m_numEntriesPerFunction;
 -		std::vector<ElementType> m_data;
++		
  		std::unique_ptr<Container<ElementType> > m_dataGpu;
  		ElementType m_scale;
  		WindowType m_type;
@@ -594,18 +583,6 @@ index 0000000..15cfe21
 +          Device.get_info<info::device::version>().find(" 2.1") !=
 +              string_class::npos);
 +}
-diff --git a/src/SupraLib/CMakeLists.txt b/src/SupraLib/CMakeLists.txt
-index d771416..78af248 100644
---- a/src/SupraLib/CMakeLists.txt
-+++ b/src/SupraLib/CMakeLists.txt
-@@ -289,6 +289,7 @@ IF(SUPRA_BEAMFORMER)
- 		Beamformer/ScanConverter.dp.cpp
- 		)
- 	SET(SUPRA_Lib_HEADERS ${SUPRA_Lib_HEADERS}
-+		Beamformer/helper.h
- 		Beamformer/Sequencer.h
- 		Beamformer/Beamformer.h
- 		Beamformer/RxBeamformerCuda.h
 -- 
 2.17.1
 

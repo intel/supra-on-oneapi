@@ -1,0 +1,1536 @@
+From 92fb981e4ca8aa4a5a5079597eb3248f5000e809 Mon Sep 17 00:00:00 2001
+From: wangyon1 <yong4.wang@intel.com>
+Date: Thu, 4 Feb 2021 15:17:44 +0800
+Subject: [PATCH 2/4] modify to run
+
+---
+ CMakeLists.txt                                |  16 +-
+ src/SupraLib/AbstractInput.h                  |   2 +
+ src/SupraLib/AbstractNode.h                   |   3 +
+ src/SupraLib/Beamformer/Beamformer.cpp        |   9 +-
+ .../Beamformer/HilbertEnvelopeNode.cpp        |   2 +-
+ .../Beamformer/HilbertFirEnvelope.dp.cpp      |  17 +-
+ src/SupraLib/Beamformer/LogCompressor.dp.cpp  |  39 +++--
+ src/SupraLib/Beamformer/RxBeamformerCommon.h  |   4 +-
+ .../Beamformer/RxBeamformerCuda.dp.cpp        |  66 +++----
+ .../RxSampleBeamformerDelayAndStdDev.h        |   8 +-
+ .../RxSampleBeamformerDelayAndSum.h           |   8 +-
+ src/SupraLib/Beamformer/ScanConverter.dp.cpp  |  71 ++++----
+ src/SupraLib/Beamformer/WindowFunction.cpp    |   3 +-
+ src/SupraLib/Beamformer/WindowFunction.h      |   6 +-
+ src/SupraLib/CMakeLists.txt                   | 165 +++---------------
+ src/SupraLib/Container.h                      | 138 +++++----------
+ src/SupraLib/ContainerFactory.cpp.dp.cpp      |  43 ++---
+ src/SupraLib/ContainerFactory.h               |   4 +-
+ src/SupraLib/InterfaceFactory.cpp             |  34 ++--
+ src/SupraLib/utilities/DataType.cpp           |   4 +-
+ src/SupraLib/utilities/FirFilterFactory.h     |   7 +-
+ .../{cudaUtility.h => syclUtility.h}          |   6 +-
+ src/SupraLib/utilities/utility.h              |  12 ++
+ src/SupraLib/vec.h                            |   4 +-
+ 24 files changed, 248 insertions(+), 423 deletions(-)
+ rename src/SupraLib/utilities/{cudaUtility.h => syclUtility.h} (95%)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 528fb8a..f38509f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -9,24 +9,18 @@ SET(PATCH_VERSION "0")
+ MESSAGE( STATUS "CMAKE_GENERATOR: ${CMAKE_GENERATOR}")
+ MESSAGE( STATUS "CMAKE_CL_64: ${CMAKE_CL_64}")
+ 
+-SET(CMAKE_CXX_STANDARD 11)
++
++SET(CMAKE_CXX_STANDARD 17)
+ SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+ SET(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+ 
+-FIND_PACKAGE( OpenMP REQUIRED)
+-if(OPENMP_FOUND)
+-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+-endif()
+-IF(WIN32)
+-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+-ENDIF(WIN32)
++
++
+ 
+ # options for modules to include
+ OPTION(SUPRA_PROFILING             "Add profiling message to logfile"  OFF)
+ OPTION(SUPRA_WARNINGS_AS_ERRORS    "Treat all build warnings as errors (NOT on windows)" OFF)
+-OPTION(SUPRA_DOWNLOAD_SAMPLEDATA   "Whether sample data should be downloaded" ON)
++OPTION(SUPRA_DOWNLOAD_SAMPLEDATA   "Whether sample data should be downloaded" OFF)
+ OPTION(SUPRA_CUDA                  "Use cuda in SUPRA"                 ON)
+ OPTION(SUPRA_CUDA_PORTABLE         "Build for all supported CUDA architectures" OFF)
+ OPTION(SUPRA_TORCH                 "Use pytorch in SUPRA"              OFF)
+diff --git a/src/SupraLib/AbstractInput.h b/src/SupraLib/AbstractInput.h
+index 66b1d5c..a3b8f8d 100644
+--- a/src/SupraLib/AbstractInput.h
++++ b/src/SupraLib/AbstractInput.h
+@@ -18,7 +18,9 @@
+ #include <tuple>
+ #include <array>
+ 
++#undef emit
+ #include <tbb/flow_graph.h>
++#define emit 
+ 
+ #include "AbstractNode.h"
+ #include "utilities/SingleThreadTimer.h"
+diff --git a/src/SupraLib/AbstractNode.h b/src/SupraLib/AbstractNode.h
+index 33db7b0..291c9ed 100644
+--- a/src/SupraLib/AbstractNode.h
++++ b/src/SupraLib/AbstractNode.h
+@@ -13,7 +13,10 @@
+ #define __ABSTRACTNODE_H__
+ 
+ #include <memory>
++
++#undef emit
+ #include <tbb/flow_graph.h>
++#define emit
+ 
+ #include "ConfigurationDictionary.h"
+ #include "ValueRangeDictionary.h"
+diff --git a/src/SupraLib/Beamformer/Beamformer.cpp b/src/SupraLib/Beamformer/Beamformer.cpp
+index 799b1ef..e83a29d 100644
+--- a/src/SupraLib/Beamformer/Beamformer.cpp
++++ b/src/SupraLib/Beamformer/Beamformer.cpp
+@@ -30,6 +30,7 @@ namespace supra
+ 	using std::tuple;
+ 
+ 	using namespace logging;
++	
+ 
+ 	Beamformer::Beamformer()
+ 		: m_pRxBeamformerParameters(nullptr)
+@@ -931,7 +932,7 @@ namespace supra
+ 					((relativeIndex.y - 0.5)*m_txFocusWidth)*scanlinePerpDirY;
+ 				vec elementToFocus = scanlineStart3 + m_txFocusDepth*scanlineDir + focusPointFromFocusCenter - elementPos;
+ 				double transitTime = m_pTransducer->computeTransitTime(elementIndex, elementToFocus, m_speedOfSoundMMperS, m_correctMatchingLayers);
+-				maxTransitTime = max(maxTransitTime, transitTime);
++				maxTransitTime = std::max(maxTransitTime, transitTime);
+ 			}
+ 
+ 			for (size_t activeElementIdxX = txAperture.begin.x; activeElementIdxX <= txAperture.end.x; activeElementIdxX++)
+@@ -965,7 +966,7 @@ namespace supra
+ 					double transitTime = m_pTransducer->computeTransitTime(vec2s{ activeElementIdxX, activeElementIdxY }, elementToFocus, m_speedOfSoundMMperS, m_correctMatchingLayers);
+ 					double delay = maxTransitTime - transitTime;
+ 					params.delays[localElementIdxX][localElementIdxY] = delay;
+-					maxDelay = max(maxDelay, delay);
++					maxDelay = std::max(maxDelay, delay);
+ 				}
+ 			}
+ 		}
+@@ -976,7 +977,7 @@ namespace supra
+ 			{
+ 				auto elementPos = std::get<2>(t);
+ 				vec d = (scanlineStart3 - elementPos)*scanlineDir;
+-				maxTransitTime = max(maxTransitTime, (d.x + d.y + d.z + m_txFocusDepth) / m_speedOfSoundMMperS);
++				maxTransitTime = std::max(maxTransitTime, (d.x + d.y + d.z + m_txFocusDepth) / m_speedOfSoundMMperS);
+ 			}
+ 
+ 			for (size_t activeElementIdxX = txAperture.begin.x; activeElementIdxX <= txAperture.end.x; activeElementIdxX++)
+@@ -993,7 +994,7 @@ namespace supra
+ 
+ 					double delay = maxTransitTime - transitTime;
+ 					params.delays[localElementIdxX][localElementIdxY] = delay;
+-					maxDelay = max(maxDelay, delay);
++					maxDelay = std::max(maxDelay, delay);
+ 				}
+ 			}
+ 		}
+diff --git a/src/SupraLib/Beamformer/HilbertEnvelopeNode.cpp b/src/SupraLib/Beamformer/HilbertEnvelopeNode.cpp
+index a9aa775..ad8ee3a 100644
+--- a/src/SupraLib/Beamformer/HilbertEnvelopeNode.cpp
++++ b/src/SupraLib/Beamformer/HilbertEnvelopeNode.cpp
+@@ -16,7 +16,7 @@
+ #include <utilities/Logging.h>
+ 
+ //TODO remove this later
+-#include <utilities/cudaUtility.h>
++#include <utilities/syclUtility.h>
+ 
+ using namespace std;
+ 
+diff --git a/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp b/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
+index f2823f9..af16284 100644
+--- a/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
++++ b/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
+@@ -92,10 +92,9 @@ namespace supra
+ 		sycl::range<3> gridSizeFilter(1, static_cast<unsigned int>((numSamples + blockSizeFilter[ 1 ] - 1) / blockSizeFilter[ 1 ]),
+ 									  static_cast<unsigned int>((numScanlines + blockSizeFilter[ 2 ] - 1) / blockSizeFilter[ 2 ]));
+ 
+-		/*
+-		DPCT1049:27: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-		*/
+-				inImageData->getStream()->submit([ & ](sycl::handler& cgh) {
++				static long hilbert_call_count = 0;
++
++				sycl::event hilbert_event = inImageData->getStream()->submit([ & ](sycl::handler& cgh) {
+ 						auto inImageData_get_ct0 = inImageData->get();
+ 						auto m_hilbertFilter_get_ct1 = m_hilbertFilter->get();
+ 						auto pEnv_get_ct2 = pEnv->get();
+@@ -105,10 +104,12 @@ namespace supra
+ 								kernelFilterDemodulation(inImageData_get_ct0, m_hilbertFilter_get_ct1, pEnv_get_ct2, numSamples, numScanlines, m_filterLength_ct5, item_ct1);
+ 						});
+ 				});
+-		/*
+-		DPCT1010:26: SYCL uses exceptions to report errors and does not use the error codes. The call was replaced with 0. You need to rewrite this code.
+-		*/
+-		cudaSafeCall(0);
++
++				hilbert_event.wait();
++				hilbert_call_count++;
++				std::string msg = "Hilbert run " + std::to_string(hilbert_call_count) + " times: ";
++				Report_time(msg, hilbert_event);
++		
+ 
+ 		return pEnv;
+ 	}
+diff --git a/src/SupraLib/Beamformer/LogCompressor.dp.cpp b/src/SupraLib/Beamformer/LogCompressor.dp.cpp
+index 7389daf..70bc68b 100644
+--- a/src/SupraLib/Beamformer/LogCompressor.dp.cpp
++++ b/src/SupraLib/Beamformer/LogCompressor.dp.cpp
+@@ -12,6 +12,7 @@
+ #include <CL/sycl.hpp>
+ #include <dpct/dpct.hpp>
+ #include "LogCompressor.h"
++#include <utilities/utility.h>
+ 
+ #include <dpct/dpl_utils.hpp>
+ #include <oneapi/dpl/execution>
+@@ -23,11 +24,9 @@ using namespace std;
+ namespace supra
+ {
+ 	template <typename In, typename Out, typename WorkType>
+-	/*
+-	DPCT1044:29: thrust::unary_function was removed because std::unary_function has been deprecated in C++11. You may need to remove references to typedefs from thrust::unary_function in the class
+-	definition.
+-	*/
+-	struct thrustLogcompress {
++	
++	struct thrustLogcompress
++	{
+ 		WorkType _inScale;
+ 		WorkType _scaleOverDenominator;
+ 
+@@ -36,12 +35,12 @@ namespace supra
+ 		// of the downscaled (_inMax) input signal
+ 		thrustLogcompress(double dynamicRange, In inMax, Out outMax, double scale)
+ 			: _inScale(static_cast<WorkType>(dynamicRange / inMax))
+-			, _scaleOverDenominator(static_cast<WorkType>(scale * outMax / log10(dynamicRange + 1)))
++			, _scaleOverDenominator(static_cast<WorkType>(scale * outMax / sycl::log10(dynamicRange + 1)))
+ 		{};
+ 
+ 		Out operator()(const In& a) const
+ 		{
+-			WorkType val = log10(abs(static_cast<WorkType>(a))*_inScale + (WorkType)1) * _scaleOverDenominator;
++			WorkType val = sycl::log10(std::abs(static_cast<WorkType>(a))*_inScale + (WorkType)1) * _scaleOverDenominator;
+ 			return clampCast<Out>(val);
+ 		}
+ 	};
+@@ -66,11 +65,27 @@ namespace supra
+ 		}
+ 
+ 		thrustLogcompress<InputType, OutputType, WorkType> c(sycl::pow<double>(10, (dynamicRange / 20)), static_cast<InputType>(inMax), outMax, scale);
+-		std::transform(thrust::cuda::par.on(inImageData->getStream()), inImageData->get(), inImageData->get() + (width * height * depth), pComprGpu->get(), c);
+-		/*
+-		DPCT1010:28: SYCL uses exceptions to report errors and does not use the error codes. The call was replaced with 0. You need to rewrite this code.
+-		*/
+-		cudaSafeCall(0);
++		
++		auto inImageData_t = inImageData->get();
++		auto pComprGpu_t = pComprGpu->get();
++		inImageData->getStream()->wait();
++
++		static long log_call_count = 0;
++		static std::chrono::duration<double, std::milli> log_total_duration(0);
++
++		sycl::event log_event = inImageData->getStream()->submit([&] (sycl::handler &h) {
++
++			h.parallel_for<>(sycl::range<1>(width * height * depth), [=](sycl::id<1> idx){
++				pComprGpu_t[idx] = c(inImageData_t[idx]);
++			});
++			 
++		});
++
++		inImageData->getStream()->wait();
++		log_event.wait();
++		log_call_count++;
++		std::string Log_msg = "Log run " + std::to_string(log_call_count) + " times: ";
++		Report_time(Log_msg, log_event);
+ 
+ 		return pComprGpu;
+ 	}
+diff --git a/src/SupraLib/Beamformer/RxBeamformerCommon.h b/src/SupraLib/Beamformer/RxBeamformerCommon.h
+index 1527995..f86b5b9 100644
+--- a/src/SupraLib/Beamformer/RxBeamformerCommon.h
++++ b/src/SupraLib/Beamformer/RxBeamformerCommon.h
+@@ -29,7 +29,7 @@ namespace supra
+ 	template <typename T>
+ 	inline T computeDelayDTSPACE_D(T dirX, T dirY, T dirZ, T x_element, T x, T z)
+ 	{
+-		return sqrt((x_element - (x + dirX*z))*
++		return sycl::sqrt((x_element - (x + dirX*z))*
+ 			(x_element - (x + dirX*z)) +
+ 			(dirY*z)*(dirY*z)) + z;
+ 	}
+@@ -37,7 +37,7 @@ namespace supra
+ 	template <typename T>
+ 	inline T computeDelayDTSPACE3D_D(T dirX, T dirY, T dirZ, T x_element, T z_element, T x, T z, T d)
+ 	{
+-		return sqrt(
++		return sycl::sqrt(
+ 			squ(x_element - (x + dirX*d)) +
+ 			squ(z_element - (z + dirZ*d)) +
+ 			squ(dirY*d)) + d;
+diff --git a/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp b/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
+index 39f80ff..d97c382 100644
+--- a/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
++++ b/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
+@@ -17,7 +17,8 @@
+ #include "RxSampleBeamformerDelayAndStdDev.h"
+ #include "RxSampleBeamformerTestSignal.h"
+ #include "RxBeamformerCommon.h"
+-#include "utilities/cudaUtility.h"
++#include "utilities/syclUtility.h"
++#include <utilities/utility.h>
+ 
+ //TODO ALL ELEMENT/SCANLINE Y positons are actually Z! Change all variable names accordingly
+ namespace supra
+@@ -25,8 +26,7 @@ namespace supra
+ 	RxBeamformerCuda::RxBeamformerCuda(const RxBeamformerParameters & parameters)
+ 		: m_windowFunction(nullptr)
+ 	{
+-  dpct::device_ext& dev_ct1 = dpct::get_current_device();
+-  sycl::queue&	  q_ct1 = dev_ct1.default_queue();
++  
+ 		m_lastSeenDt = 0;
+ 		m_numRxScanlines = parameters.getNumRxScanlines();
+ 		m_rxScanlineLayout = parameters.getRxScanlineLayout();
+@@ -35,6 +35,9 @@ namespace supra
+ 		m_speedOfSoundMMperS = parameters.getSpeedOfSoundMMperS();
+ 		m_rxNumDepths = parameters.getRxNumDepths();
+ 
++		dpct::device_ext& dev_ct1 = dpct::get_current_device();
++  		sycl::queue&	  q_ct1 = dev_ct1.default_queue();
++		
+ 		// create and fill new buffers
+ 		m_pRxDepths = std::unique_ptr<Container<LocationType>>(new Container<LocationType>(LocationGpu, &q_ct1, parameters.getRxDepths()));
+ 
+@@ -315,9 +318,7 @@ namespace supra
+ 		{
+ 			if (interpolateBetweenTransmits)
+ 			{
+-				/*
+-				DPCT1049:32: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-				*/
++				
+ 						stream->submit([ & ](sycl::handler& cgh) {
+ 							  sycl::accessor<LocationType, 1, sycl::access::mode::read_write, sycl::access::target::local>				  x_elemsDTsh_acc_ct1(sycl::range<1>(1024), cgh);
+ 							  sycl::accessor<LocationType, 1, sycl::access::mode::read_write, sycl::access::target::local>				  z_elemsDTsh_acc_ct1(sycl::range<1>(1024), cgh);
+@@ -334,9 +335,7 @@ namespace supra
+ 						});
+ 			}
+ 			else {
+-				/*
+-				DPCT1049:33: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-				*/
++				
+ 						stream->submit([ & ](sycl::handler& cgh) {
+ 							  sycl::accessor<LocationType, 1, sycl::access::mode::read_write, sycl::access::target::local>				  x_elemsDTsh_acc_ct1(sycl::range<1>(1024), cgh);
+ 							  sycl::accessor<LocationType, 1, sycl::access::mode::read_write, sycl::access::target::local>				  z_elemsDTsh_acc_ct1(sycl::range<1>(1024), cgh);
+@@ -356,9 +355,7 @@ namespace supra
+ 		else {
+ 			if (interpolateBetweenTransmits)
+ 			{
+-				/*
+-				DPCT1049:34: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-				*/
++				
+ 						stream->submit([ & ](sycl::handler& cgh) {
+ 							  sycl::accessor<LocationType, 1, sycl::access::mode::read_write, sycl::access::target::local>				  x_elemsDTsh_acc_ct1(sycl::range<1>(1024), cgh);
+ 							  sycl::accessor<LocationType, 1, sycl::access::mode::read_write, sycl::access::target::local>				  z_elemsDTsh_acc_ct1(sycl::range<1>(1024), cgh);
+@@ -375,9 +372,7 @@ namespace supra
+ 						});
+ 			}
+ 			else {
+-				/*
+-				DPCT1049:35: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-				*/
++				
+ 						stream->submit([ & ](sycl::handler& cgh) {
+ 							  sycl::accessor<LocationType, 1, sycl::access::mode::read_write, sycl::access::target::local>				  x_elemsDTsh_acc_ct1(sycl::range<1>(1024), cgh);
+ 							  sycl::accessor<LocationType, 1, sycl::access::mode::read_write, sycl::access::target::local>				  z_elemsDTsh_acc_ct1(sycl::range<1>(1024), cgh);
+@@ -394,10 +389,7 @@ namespace supra
+ 						});
+ 			}
+ 		}
+-		/*
+-		DPCT1010:36: SYCL uses exceptions to report errors and does not use the error codes. The call was replaced with 0. You need to rewrite this code.
+-		*/
+-		cudaSafeCall(0);
++		
+ 	}
+ 
+ 	template <class SampleBeamformer, typename RFType, typename ResultType, typename LocationType>
+@@ -411,9 +403,7 @@ namespace supra
+ 		{
+ 			if (interpolateBetweenTransmits)
+ 			{
+-				/*
+-				DPCT1049:37: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-				*/
++				
+ 						stream->submit([ & ](sycl::handler& cgh) {
+ 							  cgh.parallel_for(sycl::nd_range<3>(gridSize * blockSize, blockSize), [ = ](sycl::nd_item<3> item_ct1) {
+ 									rxBeamformingDTSPACEKernel<SampleBeamformer, true, true>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines, scanlines,
+@@ -422,23 +412,26 @@ namespace supra
+ 						});
+ 			}
+ 			else {
+-				/*
+-				DPCT1049:38: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-				*/
+-						stream->submit([ & ](sycl::handler& cgh) {
++
++						static long beam_call_count = 0;
++				
++						sycl::event beam_event = stream->submit([ & ](sycl::handler& cgh) {
+ 							  cgh.parallel_for(sycl::nd_range<3>(gridSize * blockSize, blockSize), [ = ](sycl::nd_item<3> item_ct1) {
+ 									rxBeamformingDTSPACEKernel<SampleBeamformer, true, false>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines, scanlines,
+ 																							  numZs, zs, x_elems, speedOfSound, dt, additionalOffset, F, windowFunction, s, item_ct1);
+ 							  });
+ 						});
++
++						beam_event.wait();
++						beam_call_count++;
++						std::string msg = "Beamforming run " + std::to_string(beam_call_count) + " times: ";
++						Report_time(msg, beam_event);
+ 			}
+ 		}
+ 		else {
+ 			if (interpolateBetweenTransmits)
+ 			{
+-				/*
+-				DPCT1049:39: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-				*/
++				
+ 						stream->submit([ & ](sycl::handler& cgh) {
+ 							  cgh.parallel_for(sycl::nd_range<3>(gridSize * blockSize, blockSize), [ = ](sycl::nd_item<3> item_ct1) {
+ 									rxBeamformingDTSPACEKernel<SampleBeamformer, false, true>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines, scanlines,
+@@ -447,9 +440,7 @@ namespace supra
+ 						});
+ 			}
+ 			else {
+-				/*
+-				DPCT1049:40: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-				*/
++				
+ 						stream->submit([ & ](sycl::handler& cgh) {
+ 							  cgh.parallel_for(sycl::nd_range<3>(gridSize * blockSize, blockSize), [ = ](sycl::nd_item<3> item_ct1) {
+ 									rxBeamformingDTSPACEKernel<SampleBeamformer, false, false>(numTransducerElements, numReceivedChannels, numTimesteps, RF, numTxScanlines, numRxScanlines, scanlines,
+@@ -458,10 +449,7 @@ namespace supra
+ 						});
+ 			}
+ 		}
+-		/*
+-		DPCT1010:41: SYCL uses exceptions to report errors and does not use the error codes. The call was replaced with 0. You need to rewrite this code.
+-		*/
+-		cudaSafeCall(0);
++		
+ 	}
+ 
+ 	template <typename ChannelDataType, typename ImageDataType>
+@@ -494,7 +482,9 @@ namespace supra
+ 
+ 		auto beamformingFunction3D = &rxBeamformingDTspaceCuda3D<RxSampleBeamformerDelayAndSum, m_windowFunctionNumEntries, ChannelDataType, ImageDataType, LocationType>;
+ 		auto beamformingFunction2D = &rxBeamformingDTspaceCuda<RxSampleBeamformerDelayAndSum, ChannelDataType, ImageDataType, LocationType>;
+-		switch (sampleBeamformer)
++		
++		// We don't use DelayAndStdDev and TestSignal algorthm, so below code are commented.
++		/*switch (sampleBeamformer)
+ 		{
+ 		case DelayAndSum:
+ 			beamformingFunction3D = &rxBeamformingDTspaceCuda3D<RxSampleBeamformerDelayAndSum, m_windowFunctionNumEntries, ChannelDataType, ImageDataType, LocationType>;
+@@ -512,7 +502,7 @@ namespace supra
+ 		default:
+ 			beamformingFunction3D = &rxBeamformingDTspaceCuda3D<RxSampleBeamformerDelayAndSum, m_windowFunctionNumEntries, ChannelDataType, ImageDataType, LocationType>;
+ 			beamformingFunction2D = &rxBeamformingDTspaceCuda<RxSampleBeamformerDelayAndSum, ChannelDataType, ImageDataType, LocationType>;
+-		}
++		}*/
+ 
+ 
+ 		convertToDtSpace(dt, speedOfSoundMMperS, rawData->getNumElements());
+diff --git a/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndStdDev.h b/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndStdDev.h
+index d72079d..9e5e845 100644
+--- a/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndStdDev.h
++++ b/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndStdDev.h
+@@ -107,7 +107,7 @@ namespace supra
+ 						{
+ 							LocationType delayf = initialDelay +
+ 								computeDelayDTSPACE3D_D(dirX, dirY, dirZ, x_elem, z_elem, scanline_x, scanline_z, depth) + additionalOffset;
+-							uint32_t delay = static_cast<uint32_t>(::floor(delayf));
++							uint32_t delay = static_cast<uint32_t>(sycl::floor(delayf));
+ 							delayf -= delay;
+ 							if (delay < (numTimesteps - 1))
+ 							{
+@@ -122,7 +122,7 @@ namespace supra
+ 						}
+ 						else
+ 						{
+-							uint32_t delay = static_cast<uint32_t>(::round(
++							uint32_t delay = static_cast<uint32_t>(sycl::round(
+ 								initialDelay + computeDelayDTSPACE3D_D(dirX, dirY, dirZ, x_elem, z_elem, scanline_x, scanline_z, depth)) + additionalOffset);
+ 							if (delay < numTimesteps)
+ 							{
+@@ -204,7 +204,7 @@ namespace supra
+ 					{
+ 						LocationType delayf = initialDelay +
+ 							computeDelayDTSPACE_D(dirX, dirY, dirZ, x_elem, scanline_x, depth) + additionalOffset;
+-						int32_t delay = static_cast<int32_t>(floor(delayf));
++						int32_t delay = static_cast<int32_t>(sycl::floor(delayf));
+ 						delayf -= delay;
+ 						if (delay < (numTimesteps - 1))
+ 						{
+@@ -219,7 +219,7 @@ namespace supra
+ 					}
+ 					else
+ 					{
+-						int32_t delay = static_cast<int32_t>(round(
++						int32_t delay = static_cast<int32_t>(sycl::round(
+ 							initialDelay + computeDelayDTSPACE_D(dirX, dirY, dirZ, x_elem, scanline_x, depth)) + additionalOffset);
+ 						if (delay < numTimesteps)
+ 						{
+diff --git a/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndSum.h b/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndSum.h
+index 0684605..f5330d5 100644
+--- a/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndSum.h
++++ b/src/SupraLib/Beamformer/RxSampleBeamformerDelayAndSum.h
+@@ -72,7 +72,7 @@ namespace supra
+ 						{
+ 							LocationType delayf = initialDelay +
+ 								computeDelayDTSPACE3D_D(dirX, dirY, dirZ, x_elem, z_elem, scanline_x, scanline_z, depth) + additionalOffset;
+-							uint32_t delay = static_cast<uint32_t>(::floor(delayf));
++							uint32_t delay = static_cast<uint32_t>(sycl::floor(delayf));
+ 							delayf -= delay;
+ 							if (delay < (numTimesteps - 1))
+ 							{
+@@ -87,7 +87,7 @@ namespace supra
+ 						}
+ 						else
+ 						{
+-							uint32_t delay = static_cast<uint32_t>(::round(
++							uint32_t delay = static_cast<uint32_t>(sycl::round(
+ 								initialDelay + computeDelayDTSPACE3D_D(dirX, dirY, dirZ, x_elem, z_elem, scanline_x, scanline_z, depth)) + additionalOffset);
+ 							if (delay < numTimesteps)
+ 							{
+@@ -147,7 +147,7 @@ namespace supra
+ 					{
+ 						LocationType delayf = initialDelay +
+ 							computeDelayDTSPACE_D(dirX, dirY, dirZ, x_elem, scanline_x, depth) + additionalOffset;
+-						int32_t delay = static_cast<int32_t>(floor(delayf));
++						int32_t delay = static_cast<int32_t>(sycl::floor(delayf));
+ 						delayf -= delay;
+ 						if (delay < (numTimesteps - 1))
+ 						{
+@@ -162,7 +162,7 @@ namespace supra
+ 					}
+ 					else
+ 					{
+-						int32_t delay = static_cast<int32_t>(round(
++						int32_t delay = static_cast<int32_t>(sycl::round(
+ 							initialDelay + computeDelayDTSPACE_D(dirX, dirY, dirZ, x_elem, scanline_x, depth)) + additionalOffset);
+ 						if (delay < numTimesteps)
+ 						{
+diff --git a/src/SupraLib/Beamformer/ScanConverter.dp.cpp b/src/SupraLib/Beamformer/ScanConverter.dp.cpp
+index fd49274..43f4504 100644
+--- a/src/SupraLib/Beamformer/ScanConverter.dp.cpp
++++ b/src/SupraLib/Beamformer/ScanConverter.dp.cpp
+@@ -28,7 +28,8 @@
+ #include <dpct/dpct.hpp>
+ #include "ScanConverter.h"
+ #include <cassert>
+-#include <utilities/cudaUtility.h>
++#include <utilities/syclUtility.h>
++#include <utilities/utility.h>
+ #include <utilities/Logging.h>
+ 
+ #include <dpct/dpl_utils.hpp>
+@@ -90,7 +91,7 @@ namespace supra
+ 				pointInsideTetrahedron(s2, s3, e1, e4, voxelPos))
+ 			{
+ 
+-				thrust::pair<vec3T<Tf>, bool> params = mapToParameters3D<Tf, Ti>(
++				std::pair<vec3T<Tf>, bool> params = mapToParameters3D<Tf, Ti>(
+ 					scanline1Pos,
+ 					scanline2Pos,
+ 					scanline3Pos,
+@@ -185,7 +186,7 @@ namespace supra
+ 		}
+ 
+ 		template <typename Tf, typename Ti>
+-		static thrust::pair<vec3T<Tf>, bool> mapToParameters3D(
++		static std::pair<vec3T<Tf>, bool> mapToParameters3D(
+ 			const vec3T<Tf> & a,
+ 			const vec3T<Tf> & ax,
+ 			const vec3T<Tf> & ay,
+@@ -215,7 +216,7 @@ namespace supra
+ 
+ 			if (dot(lowConnX, highConnX) > 0 || dot(lowConnY, highConnY) > 0)
+ 			{
+-				return thrust::pair<vec3T<Tf>, bool>(vec3T<Tf>{ 0, 0, 0 }, false);
++				return std::pair<vec3T<Tf>, bool>(vec3T<Tf>{ 0, 0, 0 }, false);
+ 			}
+ 
+ 			vec2T<Tf> dist = { 1e10, 1e10 };
+@@ -273,7 +274,7 @@ namespace supra
+ 			vec3T<Tf> lineBase = (1 - t.y)*planeBaseX1 + t.y*planeBaseX2;
+ 			Tf d = norm(x - lineBase);
+ 
+-			return thrust::pair<vec3T<Tf>, bool>(vec3T<Tf>{ t.x, t.y, d }, true);
++			return std::pair<vec3T<Tf>, bool>(vec3T<Tf>{ t.x, t.y, d }, true);
+ 		}
+ 	};
+ 
+@@ -455,13 +456,13 @@ namespace supra
+ 
+ 		if (m_is2D)
+ 		{
+-			sycl::range<3> blockSize(1, 256, 1);
++			sycl::range<3> blockSize(1, 8, 16);
+ 			sycl::range<3> gridSize(1, static_cast<unsigned int>((m_imageSize.y + blockSize[ 1 ] - 1) / blockSize[ 1 ]),
+ 									static_cast<unsigned int>((m_imageSize.x + blockSize[ 2 ] - 1) / blockSize[ 2 ]));
+-			/*
+-			DPCT1049:22: The workgroup size passed to the SYCL kernel may exceed the limit. To get the device limit, query info::device::max_work_group_size. Adjust the workgroup size if needed.
+-			*/
+-				  pScanlineData->getStream()->submit([ & ](sycl::handler& cgh) {
++				
++				  static long scan_call_count = 0;
++				  
++				  sycl::event scan_event = pScanlineData->getStream()->submit([ & ](sycl::handler& cgh) {
+ 						auto m_imageSize_x_ct2 = ( uint32_t )m_imageSize.x;
+ 						auto m_imageSize_y_ct3 = ( uint32_t )m_imageSize.y;
+ 						auto m_mask_get_ct4 = m_mask->get();
+@@ -476,10 +477,13 @@ namespace supra
+ 											pScanlineData_get_ct8, pConv_get_ct9, item_ct1);
+ 						});
+ 				  });
+-			/*
+-			DPCT1010:20: SYCL uses exceptions to report errors and does not use the error codes. The call was replaced with 0. You need to rewrite this code.
+-			*/
+-			cudaSafeCall(0);
++				 
++				  scan_event.wait();
++				  scan_call_count++;
++				  std::string msg = "Scan run " + std::to_string(scan_call_count) + " times: ";
++				  Report_time(msg, scan_event);
++
++			
+ 		}
+ 		else
+ 		{
+@@ -506,10 +510,7 @@ namespace supra
+ 											m_sampleIdx_get_ct7, m_weightX_get_ct8, m_weightY_get_ct9, m_weightZ_get_ct10, pScanlineData_get_ct11, pConv_get_ct12, item_ct1);
+ 						});
+ 				  });
+-			/*
+-			DPCT1010:21: SYCL uses exceptions to report errors and does not use the error codes. The call was replaced with 0. You need to rewrite this code.
+-			*/
+-			cudaSafeCall(0);
++			
+ 		}
+ 		return pConv;
+ 	}
+@@ -535,8 +536,8 @@ namespace supra
+ 
+ 	void ScanConverter::updateInternals(const std::shared_ptr<const USImageProperties>& inImageProps)
+ 	{
+-  dpct::device_ext& dev_ct1 = dpct::get_current_device();
+-  sycl::queue&	  q_ct1 = dev_ct1.default_queue();
++  		dpct::device_ext& dev_ct1 = dpct::get_current_device();
++  		sycl::queue&	  q_ct1 = dev_ct1.default_queue();
+ 		logging::log_log("Scanconverter: Updating scanconversion internals");
+ 
+ 		//Check the scanline configuration for validity
+@@ -675,17 +676,19 @@ namespace supra
+ 			m_weightX = make_shared<Container<WeightType> >(ContainerLocation::LocationHost, numelBuffers);
+ 			m_weightY = make_shared<Container<WeightType> >(ContainerLocation::LocationHost, numelBuffers);
+ 			m_weightZ = make_shared<Container<WeightType> >(ContainerLocation::LocationHost, numelBuffers);*/
+-			m_mask = make_shared<Container<uint8_t>>(ContainerLocation::LocationGpu, &q_ct1, numelBuffers);
+-			m_sampleIdx = make_shared<Container<IndexType>>(ContainerLocation::LocationGpu, &q_ct1, numelBuffers);
+-			m_weightX = make_shared<Container<WeightType>>(ContainerLocation::LocationGpu, &q_ct1, numelBuffers);
+-			m_weightY = make_shared<Container<WeightType>>(ContainerLocation::LocationGpu, &q_ct1, numelBuffers);
+-			m_weightZ = make_shared<Container<WeightType>>(ContainerLocation::LocationGpu, &q_ct1, numelBuffers);
++			sycl::queue &default_queue=dpct::get_default_queue();
++			m_mask = make_shared<Container<uint8_t>>(ContainerLocation::LocationGpu, &default_queue, numelBuffers);
++			m_sampleIdx = make_shared<Container<IndexType>>(ContainerLocation::LocationGpu, &default_queue, numelBuffers);
++			m_weightX = make_shared<Container<WeightType>>(ContainerLocation::LocationGpu, &default_queue, numelBuffers);
++			m_weightY = make_shared<Container<WeightType>>(ContainerLocation::LocationGpu, &default_queue, numelBuffers);
++			m_weightZ = make_shared<Container<WeightType>>(ContainerLocation::LocationGpu, &default_queue, numelBuffers);
+ 
+ 			//create image mask
+-			/*
+-			DPCT1003:24: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			cudaSafeCall((q_ct1.memset(m_mask->get(), 0, m_mask->size() * sizeof(uint8_t)), 0));
++			
++			//create image mask
++			m_mask->getStream()->submit([&](sycl::handler &h){
++				h.memset(m_mask->get(), 0, m_mask->size()*sizeof(uint8_t));
++			});
+ 
+ 			if (m_is2D)
+ 			{
+@@ -839,17 +842,11 @@ namespace supra
+ 													static_cast<Tf>(resolution), m_mask_get_ct27, m_sampleIdx_get_ct28, m_weightX_get_ct29, m_weightY_get_ct30, m_weightZ_get_ct31, item_ct1);
+ 										  });
+ 									});
+-						/*
+-						DPCT1010:26: SYCL uses exceptions to report errors and does not use the error codes. The call was replaced with 0. You need to rewrite this code.
+-						*/
+-						cudaSafeCall(0);
++						
+ 					}
+ 				}
+ 			}
+-			/*
+-			DPCT1003:27: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			cudaSafeCall((q_ct1.wait(), 0));
++			
+ 		}
+ 		else
+ 		{
+diff --git a/src/SupraLib/Beamformer/WindowFunction.cpp b/src/SupraLib/Beamformer/WindowFunction.cpp
+index 26ec55b..06bc8f5 100644
+--- a/src/SupraLib/Beamformer/WindowFunction.cpp
++++ b/src/SupraLib/Beamformer/WindowFunction.cpp
+@@ -42,8 +42,9 @@ namespace supra
+ 		}
+ 
+ 		//Create the storage for the window functions
++		sycl::queue &default_queue=dpct::get_default_queue();
+ 		m_dataGpu = unique_ptr<Container<ElementType> >(
+-			new Container<ElementType>(LocationGpu, cudaStreamPerThread, m_data));
++			new Container<ElementType>(LocationGpu, &default_queue, m_data));
+ 
+ 		m_gpuFunction = WindowFunctionGpu(m_numEntriesPerFunction, m_dataGpu->get());
+ 	}
+diff --git a/src/SupraLib/Beamformer/WindowFunction.h b/src/SupraLib/Beamformer/WindowFunction.h
+index 2158d3a..4f69c89 100644
+--- a/src/SupraLib/Beamformer/WindowFunction.h
++++ b/src/SupraLib/Beamformer/WindowFunction.h
+@@ -21,7 +21,7 @@
+ #include <memory>
+ #include <Container.h>
+ #include <utilities/utility.h>
+-#include <utilities/cudaUtility.h>
++#include <utilities/syclUtility.h>
+ #include <cmath>
+ 
+ namespace supra
+@@ -51,10 +51,10 @@ namespace supra
+ 	public:
+ 		typedef float ElementType;
+ 
+-		WindowFunctionGpu(const WindowFunctionGpu& a)
++		/*WindowFunctionGpu(const WindowFunctionGpu& a)
+ 			: m_numEntriesPerFunction(a.m_numEntriesPerFunction)
+ 			, m_data(a.m_data)
+-			, m_scale(a.m_scale) {};
++			, m_scale(a.m_scale) {};*/
+ 
+ 		//Returns the weight of chosen window a the relative index 
+ 		// relativeIndex has to be normalized to [-1, 1] (inclusive)
+diff --git a/src/SupraLib/CMakeLists.txt b/src/SupraLib/CMakeLists.txt
+index 22df44e..a2472b9 100644
+--- a/src/SupraLib/CMakeLists.txt
++++ b/src/SupraLib/CMakeLists.txt
+@@ -58,53 +58,11 @@ IF (SUPRA_DEVICE_CEPHASONICS)
+ 	INCLUDE(supraIncludeCephasonics)
+ ENDIF()
+ 
+-IF(SUPRA_CUDA)
+-	include(supraIncludeCuda)
+-	set(CUDA_SEPARABLE_COMPILATION ON)
+-	MESSAGE(STATUS "Found Cuda Version " ${CUDA_VERSION_STRING})
+-	set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS};-Wno-deprecated-gpu-targets;--use_fast_math;--default-stream=per-thread;-lineinfo")
+-	IF(CUDA_VERSION_STRING VERSION_GREATER "8.0")
+-		set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS};--Wno-deprecated-declarations")
+-		IF(BUILD_SHARED_LIBS AND NOT WIN32)
+-			set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS};-Xcompiler=-fPIC")
+-		ENDIF()
+-	ENDIF()
+-	IF(SUPRA_CUDA_PORTABLE)
+-		CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS "Common" )
+-	ELSE()
+-		CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS "Auto")
+-	ENDIF()
+-	MESSAGE(STATUS "Using nvcc arch flags: ${ARCH_FLAGS}")
+-	LIST(APPEND CUDA_NVCC_FLAGS ${ARCH_FLAGS})
+-	IF(NOT WIN32)
+-		# nvcc cannot handle the flag beeing set twice, so only set it if not present
+-		list(FIND CUDA_NVCC_FLAGS "-std=c++11" CUDA_NVCC_STD_FLAGa)
+-		list(FIND CUDA_NVCC_FLAGS "--std=c++11" CUDA_NVCC_STD_FLAGb)
+-		IF(CUDA_NVCC_STD_FLAGa EQUAL -1 AND CUDA_NVCC_STD_FLAGb EQUAL -1)
+-			set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS};--std=c++11")
+-		ENDIF()
+-	ENDIF()
+-	
+-	# on win32 cufft is not supported
+-	IF(EXISTS ${CUDA_CUFFT_LIBRARIES})
+-		LIST(APPEND CUDA_LIBRARIES ${CUDA_CUFFT_LIBRARIES})
+-		SET(SUPRA_CUFFT TRUE)
+-		SET(SUPRA_Lib_DEFINES ${SUPRA_Lib_DEFINES} HAVE_CUFFT)
+-	ENDIF()
+-	LIST(APPEND CUDA_LIBRARIES ${CUDA_curand_LIBRARY} ${CUDA_nppif_LIBRARY} ${CUDA_nppist_LIBRARY} ${CUDA_nppial_LIBRARY})
+-	
+-	SET(SUPRA_Lib_DEFINES ${SUPRA_Lib_DEFINES}
+-		HAVE_CUDA)
+-	SET(SUPRA_Lib_INCLUDEDIRS ${SUPRA_Lib_INCLUDEDIRS}
+-		${CUDA_INCLUDE_DIRS})
+-		
+-	IF(CUDA_cublas_LIBRARY)
+-		SET(SUPRA_CUDA_CUBLAS ON)
+-		SET(SUPRA_Lib_DEFINES ${SUPRA_Lib_DEFINES}
+-			HAVE_CUDA_CUBLAS)
+-		SET(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_cublas_LIBRARY})
+-	ENDIF()
+-ENDIF(SUPRA_CUDA)
++
++
++SET(SUPRA_Lib_DEFINES ${SUPRA_Lib_DEFINES} HAVE_CUDA)
++SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-c++11-narrowing -O2 -g")
++
+ 
+ #find IGTL Interface
+ IF(SUPRA_DEVICE_IGTL_OUTPUT OR SUPRA_DEVICE_TRACKING_IGTL)
+@@ -129,7 +87,7 @@ ENDIF(SUPRA_PROFILING)
+ ############################################
+ #lib base source files
+ SET(SUPRA_Lib_SOURCE
+-	ContainerFactory.cpp
++	ContainerFactory.cpp.dp.cpp
+ 	SupraManager.cpp
+ 	RecordObject.cpp
+ 	SyncRecordObject.cpp
+@@ -149,7 +107,7 @@ SET(SUPRA_Lib_SOURCE
+ 	utilities/tinyxml2/tinyxml2.cpp
+ 	utilities/jsoncpp/jsoncpp.cpp
+ 	FrequencyLimiterNode.cpp
+-	StreamSyncNode.cpp
++	#StreamSyncNode.cpp
+ 	AutoQuitNode.cpp
+ 	ExampleNodes/ImageProcessingCpuNode.cpp)
+ SET(SUPRA_Lib_HEADERS
+@@ -172,7 +130,7 @@ SET(SUPRA_Lib_HEADERS
+ 	TemporalOffsetNode.h
+ 	InterfaceFactory.h
+ 	utilities/utility.h
+-	utilities/cudaUtility.h
++	utilities/syclUtility.h
+ 	utilities/Buffer.h
+ 	utilities/Logging.h
+ 	utilities/CallFrequency.h
+@@ -190,41 +148,9 @@ SET(SUPRA_Lib_HEADERS
+ 	
+ IF(SUPRA_CUDA)
+ 	SET(SUPRA_Lib_SOURCE
+-		${SUPRA_Lib_SOURCE}
+-		ExampleNodes/ImageProcessingCudaNode.cpp
+-		ExampleNodes/ImageProcessingCuda.cu
+-		ExampleNodes/ImageProcessingBufferCudaNode.cpp
+-		ExampleNodes/ImageProcessingBufferCuda.cu
+-		Processing/TimeGainCompensationNode.cpp
+-		Processing/TimeGainCompensation.cu
+-		Processing/FilterSradCuda.cu
+-		Processing/FilterSradCudaNode.cpp
+-		Processing/DarkFilterThresholdingCudaNode.cpp
+-		Processing/DarkFilterThresholdingCuda.cu
+-		Processing/BilateralFilterCudaNode.cpp
+-		Processing/BilateralFilterCuda.cu
+-		Processing/MedianFilterCudaNode.cpp
+-		Processing/MedianFilterCuda.cu
+-		NoiseNode.cpp
+-		NoiseCuda.cu)
++		${SUPRA_Lib_SOURCE} )
+ 	SET(SUPRA_Lib_HEADERS
+-		${SUPRA_Lib_HEADERS}
+-		ExampleNodes/ImageProcessingCudaNode.h
+-		ExampleNodes/ImageProcessingCuda.h
+-		ExampleNodes/ImageProcessingBufferCudaNode.h
+-		ExampleNodes/ImageProcessingBufferCuda.h
+-		Processing/TimeGainCompensationNode.h
+-		Processing/TimeGainCompensation.h
+-		Processing/FilterSradCudaNode.h
+-		Processing/FilterSradCuda.h
+-		Processing/DarkFilterThresholdingCudaNode.h
+-		Processing/DarkFilterThresholdingCuda.h
+-		Processing/BilateralFilterCudaNode.h
+-		Processing/BilateralFilterCuda.h
+-		Processing/MedianFilterCudaNode.h
+-		Processing/MedianFilterCuda.h
+-		NoiseNode.h
+-		NoiseCuda.h)
++		${SUPRA_Lib_HEADERS})
+ ENDIF(SUPRA_CUDA)
+ 	
+ SET(SUPRA_Lib_INCLUDEDIRS
+@@ -260,23 +186,17 @@ IF(SUPRA_BEAMFORMER)
+ 		Beamformer/WindowFunction.cpp
+ 		Beamformer/USTransducer.cpp
+ 		Beamformer/BeamformingNode.cpp
+-		Beamformer/IQDemodulatorNode.cpp
+ 		Beamformer/HilbertFirEnvelopeNode.cpp
+ 		Beamformer/LogCompressorNode.cpp
+ 		Beamformer/ScanConverterNode.cpp
+-		Beamformer/TemporalFilterNode.cpp
+-		Beamformer/RawDelayNode.cpp
+ 		Beamformer/RxEventLimiterNode.cpp
+ 		InputOutput/UltrasoundInterfaceRawDataMock.cpp
+ 		InputOutput/UltrasoundInterfaceBeamformedMock.cpp)
+ 	SET(SUPRA_Lib_CUDASOURCE ${SUPRA_Lib_CUDASOURCE}
+-		Beamformer/RxBeamformerCuda.cu
+-		Beamformer/IQDemodulator.cu
+-		Beamformer/HilbertFirEnvelope.cu
+-		Beamformer/LogCompressor.cu
+-		Beamformer/ScanConverter.cu
+-		Beamformer/TemporalFilter.cu
+-		Beamformer/RawDelay.cu)
++		Beamformer/RxBeamformerCuda.dp.cpp
++		Beamformer/HilbertFirEnvelope.dp.cpp
++		Beamformer/LogCompressor.dp.cpp
++		Beamformer/ScanConverter.dp.cpp)
+ 	SET(SUPRA_Lib_HEADERS ${SUPRA_Lib_HEADERS}
+ 		Beamformer/Sequencer.h
+ 		Beamformer/Beamformer.h
+@@ -305,55 +225,15 @@ IF(SUPRA_BEAMFORMER)
+ 		Beamformer/RxEventLimiterNode.h
+ 		InputOutput/UltrasoundInterfaceRawDataMock.h
+ 		InputOutput/UltrasoundInterfaceBeamformedMock.h)
+-	IF(SUPRA_CUFFT)
+-		SET(SUPRA_Lib_SOURCE ${SUPRA_Lib_SOURCE}
+-			Beamformer/HilbertEnvelopeNode.cpp)
+-		SET(SUPRA_Lib_CUDASOURCE ${SUPRA_Lib_CUDASOURCE}
+-			Beamformer/HilbertEnvelope.cu)
+-		SET(SUPRA_Lib_HEADERS ${SUPRA_Lib_HEADERS}
+-			Beamformer/HilbertEnvelope.h
+-			Beamformer/HilbertEnvelopeNode.h)
+-	ENDIF(SUPRA_CUFFT)
++	
+ 		
+ 	SET(SUPRA_Lib_DEFINES ${SUPRA_Lib_DEFINES}
+ 		HAVE_BEAMFORMER)
+-	SET(SUPRA_Lib_LIBRARIES ${SUPRA_Lib_LIBRARIES}
+-		${CUDA_LIBRARIES})
++	SET(SUPRA_Lib_LIBRARIES ${SUPRA_Lib_LIBRARIES})
+ 	
+-	IF(SUPRA_CUDA_CUBLAS)
+-		SET(SUPRA_Lib_HEADERS ${SUPRA_Lib_HEADERS}
+-			Beamformer/BeamformingMVNode.h
+-			Beamformer/BeamformingMVpcgNode.h
+-			Beamformer/RxBeamformerMV.h
+-			Beamformer/RxBeamformerMVpcg.h)
+-		SET(SUPRA_Lib_SOURCE ${SUPRA_Lib_SOURCE}
+-			Beamformer/BeamformingMVNode.cpp
+-			Beamformer/BeamformingMVpcgNode.cpp)
+-		SET(SUPRA_Lib_CUDASOURCE ${SUPRA_Lib_CUDASOURCE}
+-			Beamformer/RxBeamformerMV.cu
+-			Beamformer/RxBeamformerMVpcg.cu)
+-		SET(SUPRA_Lib_DEFINES ${SUPRA_Lib_DEFINES}
+-			HAVE_BEAMFORMER_MINIMUM_VARIANCE)
+-	ELSE()
+-		MESSAGE(STATUS "CUBLAS not found, NOT adding minimum variance beamformer")
+-	ENDIF()
+ ENDIF(SUPRA_BEAMFORMER)
+ 
+-IF(SUPRA_TORCH)
+-	SET(SUPRA_Lib_SOURCE ${SUPRA_Lib_SOURCE}
+-		Processing/TorchInference.cpp
+-		Processing/TorchNode.cpp)
+-	SET(SUPRA_Lib_HEADERS ${SUPRA_Lib_HEADERS}
+-		Processing/TorchInference.h
+-		Processing/TorchNode.h)
+ 
+-	SET(SUPRA_Lib_DEFINES ${SUPRA_Lib_DEFINES}
+-		HAVE_TORCH)
+-	SET(SUPRA_Lib_INCLUDEDIRS ${SUPRA_Lib_INCLUDEDIRS}
+-		${TORCH_INCLUDE_DIRS})
+-	SET(SUPRA_Lib_LIBRARIES ${SUPRA_Lib_LIBRARIES}
+-		${TORCH_LIBRARIES})
+-ENDIF(SUPRA_TORCH)
+ 
+ IF(SUPRA_DEVICE_ULTRASOUND_SIM)
+ 	SET(SUPRA_Lib_SOURCE ${SUPRA_Lib_SOURCE}
+@@ -486,19 +366,14 @@ SOURCE_GROUP(inc FILES ${SUPRA_Lib_HEADERS})
+ INCLUDE_DIRECTORIES(SUPRA_Lib
+ 	${SUPRA_Lib_INCLUDEDIRS})
+ 
+-IF(CUDA_FOUND)
+-CUDA_ADD_LIBRARY(SUPRA_Lib
+-	${SUPRA_Lib_SOURCE}
+-	${SUPRA_Lib_HEADERS}
+-	${SUPRA_Lib_CUDASOURCE}
+-)
+-ELSE ()
++
+ ADD_LIBRARY(SUPRA_Lib
+ 	${SUPRA_Lib_SOURCE}
+ 	${SUPRA_Lib_HEADERS}
+ 	${SUPRA_Lib_CUDASOURCE}
+ )
+-ENDIF(CUDA_FOUND)
++
++
+ TARGET_INCLUDE_DIRECTORIES(SUPRA_Lib
+ 	PUBLIC ${SUPRA_Lib_INCLUDEDIRS}
+ )
+@@ -511,7 +386,7 @@ ENDIF()
+ 
+ TARGET_COMPILE_DEFINITIONS(SUPRA_Lib 
+ 	PRIVATE ${SUPRA_Lib_DEFINES})
+-set_property(TARGET SUPRA_Lib PROPERTY CXX_STANDARD 11)
++set_property(TARGET SUPRA_Lib PROPERTY CXX_STANDARD 17)
+ set_property(TARGET SUPRA_Lib PROPERTY CXX_STANDARD_REQUIRED ON)
+ 
+ SET(SUPRA_Lib_INCLUDEDIRS ${SUPRA_Lib_INCLUDEDIRS} PARENT_SCOPE)
+diff --git a/src/SupraLib/Container.h b/src/SupraLib/Container.h
+index eac0fca..f154e55 100644
+--- a/src/SupraLib/Container.h
++++ b/src/SupraLib/Container.h
+@@ -16,7 +16,7 @@
+ #include <dpct/dpct.hpp>
+ #include "ContainerFactory.h"
+ #ifdef HAVE_CUDA
+-#include "utilities/cudaUtility.h"
++#include "utilities/syclUtility.h"
+ #endif
+ #include "utilities/DataType.h"
+ 
+@@ -48,9 +48,7 @@ namespace supra
+ #ifndef HAVE_CUDA
+ 			location = LocationHost;
+ #endif
+-#ifdef HAVE_CUDA
+-			m_creationEvent = nullptr;
+-#endif
++
+ 			m_numel = numel;
+ 			m_location = location;
+ 			m_associatedStream = associatedStream;
+@@ -64,19 +62,16 @@ namespace supra
+ #ifdef HAVE_CUDA
+ 			if(location == LocationGpu)
+ 			{
+-				/*
+-				DPCT1003:10: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((associatedStream->memcpy(this->get(), data.data(), this->size() * sizeof(T)), 0));
+-				createAndRecordEvent();
++				
++				associatedStream->memcpy(this->get(), data.data(), this->size() * sizeof(T));
++				associatedStream->wait();
++				
+ 			}
+ 			else if(location == LocationBoth)
+ 			{
+-				/*
+-				DPCT1003:11: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((associatedStream->memcpy(this->get(), data.data(), this->size() * sizeof(T)), 0));
+-				createAndRecordEvent();
++				
++				associatedStream->memcpy(this->get(), data.data(), this->size() * sizeof(T));
++				associatedStream->wait();
+ 			}
+ 			else
+ 			{
+@@ -94,10 +89,8 @@ namespace supra
+ 			:Container(location, associatedStream, dataEnd - dataBegin)
+ 		{
+ #ifdef HAVE_CUDA
+-			/*
+-			DPCT1003:12: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			cudaSafeCall((associatedStream->memcpy(this->get(), dataBegin, this->size() * sizeof(T)), 0));
++			
++			associatedStream->memcpy(this->get(), dataBegin, this->size() * sizeof(T));
+ 			createAndRecordEvent();
+ 			if (waitFinished)
+ 			{
+@@ -117,35 +110,27 @@ namespace supra
+ #ifdef HAVE_CUDA
+ 			else if (source.m_location == LocationHost && location == LocationGpu)
+ 			{
+-				/*
+-				DPCT1003:13: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((source.getStream()->memcpy(this->get(), source.get(), source.size() * sizeof(T)), 0));
+-				createAndRecordEvent();
++				
++				source.getStream()->memcpy(this->get(), source.get(), source.size() * sizeof(T));
++				source.getStream()->wait();
+ 			}
+ 			else if (source.m_location == LocationGpu && location == LocationHost)
+ 			{
+-				/*
+-				DPCT1003:14: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((source.getStream()->memcpy(this->get(), source.get(), source.size() * sizeof(T)), 0));
+-				createAndRecordEvent();
++				
++				source.getStream()->memcpy(this->get(), source.get(), source.size() * sizeof(T));
++				source.getStream()->wait();
+ 			}
+ 			else if (source.m_location == LocationGpu && location == LocationGpu)
+ 			{
+-				/*
+-				DPCT1003:15: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((source.getStream()->memcpy(this->get(), source.get(), source.size() * sizeof(T)), 0));
+-				createAndRecordEvent();
++				
++				source.getStream()->memcpy(this->get(), source.get(), source.size() * sizeof(T));
++				source.getStream()->wait();
+ 			}
+ 			else
+ 			{
+-				/*
+-				DPCT1003:16: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((source.getStream()->memcpy(this->get(), source.get(), source.size() * sizeof(T)), 0));
+-				createAndRecordEvent();
++				
++				source.getStream()->memcpy(this->get(), source.get(), source.size() * sizeof(T));
++				source.getStream()->wait();
+ 			}
+ 			if (waitFinished)
+ 			{
+@@ -158,13 +143,11 @@ namespace supra
+ 		~Container()
+ 		 try {
+ #ifdef HAVE_CUDA
+-			/*
+-			DPCT1027:3: The call to cudaStreamQuery was replaced with 0, because DPC++ currently does not support query operations on queues.
+-			*/
++			
+ 			auto ret = 0;
+ 			if (ret != 0 && ret != 600 && ret != 4)
+ 			{
+-				cudaSafeCall(ret);
++				syclSafeCall(ret);
+ 			}
+ 			// If the driver is currently unloading, we cannot free the memory in any way. Exit will clean up.
+ 			else if (ret != 4)
+@@ -206,18 +189,14 @@ namespace supra
+ 			}
+ 			else if(m_location == LocationGpu)
+ 			{
+-				/*
+-				DPCT1003:17: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((getStream()->memcpy(ret, this->get(), this->size() * sizeof(T)), 0));
+-				cudaSafeCall(cudaStreamSynchronize(getStream()));				
++				
++				getStream()->memcpy(ret, this->get(), this->size() * sizeof(T));
++				getStream()->wait();				
+ 			}
+ 			else 
+ 			{
+-				/*
+-				DPCT1003:18: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((dpct::get_default_queue().memcpy(ret, this->get(), this->size() * sizeof(T)).wait(), 0));
++				
++				dpct::get_default_queue().memcpy(ret, this->get(), this->size() * sizeof(T)).wait();
+ 			}
+ 			return ret;
+ #else
+@@ -229,29 +208,14 @@ namespace supra
+ 		{
+ #ifdef HAVE_CUDA
+ 			assert(maxSize >= this->size());
+-			/*
+-			DPCT1003:19: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			cudaSafeCall((dpct::get_default_queue().memcpy(dst, this->get(), this->size() * sizeof(T)).wait(), 0));
++			
++			dpct::get_default_queue().memcpy(dst, this->get(), this->size() * sizeof(T)).wait();
+ #endif
+ 		}
+ 
+ 		void waitCreationFinished()
+ 		{
+-#ifdef HAVE_CUDA
+-			if (m_creationEvent)
+-			{
+-				/*
+-				DPCT1003:4: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-				*/
+-				cudaSafeCall((m_creationEvent.wait_and_throw(), 0));
+-				/*
+-				DPCT1027:5: The call to cudaEventDestroy was replaced with 0, because this call is redundant in DPC++.
+-				*/
+-				cudaSafeCall(0);
+-				m_creationEvent = nullptr;
+-			}
+-#endif
++			m_associatedStream->wait();
+ 		}
+ 
+ 		// returns the number of elements that can be stored in this container
+@@ -270,38 +234,18 @@ namespace supra
+ 	private:
+ 		void createAndRecordEvent()
+ 		{
+-#ifdef HAVE_CUDA
+-			if (!m_creationEvent)
+-			{
+-				//cudaSafeCall(cudaEventCreateWithFlags(&m_creationEvent, cudaEventBlockingSync | cudaEventDisableTiming));
+-				/*
+-				DPCT1027:6: The call to cudaEventCreateWithFlags was replaced with 0, because this call is redundant in DPC++.
+-				*/
+-				cudaSafeCall(0);
+-			}
+-			/*
+-			DPCT1012:7: Detected kernel execution time measurement pattern and generated an initial code for time measurements in SYCL. You can change the way time is measured depending on your goals.
+-			*/
+-			/*
+-			DPCT1024:8: The original code returned the error code that was further consumed by the program logic. This original code was replaced with 0. You may need to rewrite the program logic
+-			consuming the error code.
+-			*/
+-			m_creationEvent_ct1 = std::chrono::steady_clock::now();
+-			cudaSafeCall(0);
+-#endif
++
+ 		}
+ 
+ #ifdef HAVE_CUDA
+ 		void addCallbackStream(std::function<void(sycl::queue*, int)> func)
+ 		{
+ 			auto funcPointer = new std::function<void(sycl::queue*, int)>(func);
+-			/*
+-			DPCT1003:9: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			cudaSafeCall((std::async([ & ]() {
+-											 m_associatedStream->wait(); &(Container<T>::cudaDeleteCallback)(m_associatedStream, 0, funcPointer);
+-						  }),
+-						  0));
++			
++			std::async([ & ]() {
++				m_associatedStream->wait(); 
++				(Container<T>::cudaDeleteCallback)(m_associatedStream, 0, funcPointer);
++						  });
+ 		}
+ #endif
+ 
+@@ -319,10 +263,6 @@ namespace supra
+ 		ContainerStreamType m_associatedStream;
+ 		T* m_buffer;
+ 
+-#ifdef HAVE_CUDA
+-		sycl::event										   m_creationEvent;
+-		std::chrono::time_point<std::chrono::steady_clock> m_creationEvent_ct1;
+-#endif
+ 	};
+ }
+ 
+diff --git a/src/SupraLib/ContainerFactory.cpp.dp.cpp b/src/SupraLib/ContainerFactory.cpp.dp.cpp
+index 464a762..ba7c0c9 100644
+--- a/src/SupraLib/ContainerFactory.cpp.dp.cpp
++++ b/src/SupraLib/ContainerFactory.cpp.dp.cpp
+@@ -65,8 +65,8 @@ namespace supra
+ 			size_t memoryTotal;
+ 			if (location == LocationGpu || location == LocationBoth)
+ 			{
+-				cudaSafeCall(cudaMemGetInfo(&memoryFree, &memoryTotal));
+-				memoryFree = static_cast<size_t>(std::max(static_cast<double>(memoryFree) - (static_cast<double>(memoryTotal) * 0.02), 0.0));
++				// SYCL doesn't provide get_free_mem_info api, so we pass it.
++				memoryFree = numBytes;
+ 			}
+ 			else
+ #endif
+@@ -114,13 +114,10 @@ namespace supra
+ 		sm_streams.resize(sm_numberStreams);
+ 		for (size_t k = 0; k < sm_numberStreams; k++)
+ 		{
+-			/*
+-			DPCT1003:32: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			/*
+-			DPCT1025:33: The SYCL queue is created ignoring the flag/priority options.
+-			*/
+-			cudaSafeCall(((sm_streams[ k ]) = dpct::get_current_device().create_queue(), 0));
++			
++			auto property_list = cl::sycl::property_list{cl::sycl::property::queue::enable_profiling()};
++			sm_streams[k] =  new sycl::queue(dpct::get_default_queue().get_context(), dpct::get_default_queue().get_device(), property_list);
++			std::cout << endl << "Selected device: " << sm_streams[k]->get_device().get_info<sycl::info::device::name>() << endl;
+ 		}
+ #else
+ 		sm_streams.resize(sm_numberStreams, 0);
+@@ -129,33 +126,29 @@ namespace supra
+ 
+ 	uint8_t * ContainerFactory::allocateMemory(size_t numBytes, ContainerLocation location)
+ 	{
+-  dpct::device_ext& dev_ct1 = dpct::get_current_device();
+-  sycl::queue&	  q_ct1 = dev_ct1.default_queue();
++  		dpct::device_ext& dev_ct1 = dpct::get_current_device();
++  		sycl::queue&	  q_ct1 = dev_ct1.default_queue();
++		
++		
+ 		uint8_t* buffer = nullptr;
+ 		switch (location)
+ 		{
+ 		case LocationGpu:
+ #ifdef HAVE_CUDA
+-			/*
+-			DPCT1003:34: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			cudaSafeCall((buffer = ( uint8_t* )sycl::malloc_device(numBytes, q_ct1), 0));
++			
++			buffer = ( uint8_t* )sycl::malloc_device(numBytes, q_ct1);
+ #endif
+ 			break;
+ 		case LocationBoth:
+ #ifdef HAVE_CUDA
+-			/*
+-			DPCT1003:35: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			cudaSafeCall((buffer = ( uint8_t* )sycl::malloc_shared(numBytes, q_ct1), 0));
++			
++			buffer = ( uint8_t* )sycl::malloc_shared(numBytes, q_ct1);
+ #endif
+ 			break;
+ 		case LocationHost:
+ #ifdef HAVE_CUDA
+-			/*
+-			DPCT1003:36: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
+-			*/
+-			cudaSafeCall((buffer = ( uint8_t* )sycl::malloc_host(numBytes, q_ct1), 0));
++			
++			buffer = ( uint8_t* )sycl::malloc_host(numBytes, q_ct1);
+ #else
+ 			buffer = new uint8_t[numBytes];
+ #endif
+@@ -243,8 +236,8 @@ namespace supra
+ 
+ 	void ContainerFactory::freeMemory(uint8_t * pointer, size_t numBytes, ContainerLocation location)
+ 	{
+-  dpct::device_ext& dev_ct1 = dpct::get_current_device();
+-  sycl::queue&	  q_ct1 = dev_ct1.default_queue();
++  		dpct::device_ext& dev_ct1 = dpct::get_current_device();
++  		sycl::queue&	  q_ct1 = dev_ct1.default_queue();
+ 		switch (location)
+ 		{
+ 		case LocationGpu:
+diff --git a/src/SupraLib/ContainerFactory.h b/src/SupraLib/ContainerFactory.h
+index e39c914..3f1d4c8 100644
+--- a/src/SupraLib/ContainerFactory.h
++++ b/src/SupraLib/ContainerFactory.h
+@@ -15,7 +15,7 @@
+ #ifdef HAVE_CUDA
+ #include <CL/sycl.hpp>
+ #include <dpct/dpct.hpp>
+-#include "utilities/cudaUtility.h"
++#include "utilities/syclUtility.h"
+ #endif
+ 
+ #include <vector>
+@@ -52,7 +52,7 @@ namespace supra
+ 	private:
+ 		static void initStreams();
+ 	
+-		static constexpr size_t sm_numberStreams = 8;
++		static constexpr size_t sm_numberStreams = 1;
+ 
+ 		static std::vector<ContainerStreamType> sm_streams;
+ 		static size_t sm_streamIndex;
+diff --git a/src/SupraLib/InterfaceFactory.cpp b/src/SupraLib/InterfaceFactory.cpp
+index 7055973..02c97d1 100644
+--- a/src/SupraLib/InterfaceFactory.cpp
++++ b/src/SupraLib/InterfaceFactory.cpp
+@@ -209,37 +209,37 @@ namespace supra
+ 		{ "TemporalOffsetNode",     [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<TemporalOffsetNode>(g, nodeID, queueing); } },
+ 		{ "FrequencyLimiterNode",   [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<FrequencyLimiterNode>(g, nodeID, queueing); } },
+ 		{ "AutoQuitNode",           [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<AutoQuitNode>(g, nodeID, queueing); } },
+-		{ "StreamSyncNode",         [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<StreamSyncNode>(g, nodeID, queueing); } },
++		//{ "StreamSyncNode",         [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<StreamSyncNode>(g, nodeID, queueing); } },
+ 		{ "ImageProcessingCpuNode", [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<ImageProcessingCpuNode>(g, nodeID, queueing); } },
+ #ifdef HAVE_CUDA
+-		{ "NoiseNode",                      [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<NoiseNode>(g, nodeID, queueing); } },
+-		{ "ImageProcessingCudaNode",        [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<ImageProcessingCudaNode>(g, nodeID, queueing); } },
+-		{ "ImageProcessingBufferCudaNode",  [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<ImageProcessingBufferCudaNode>(g, nodeID, queueing); } },
+-		{ "FilterSradCudaNode",             [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<FilterSradCudaNode>(g, nodeID, queueing); } },
+-		{ "TimeGainCompensationNode",       [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<TimeGainCompensationNode>(g, nodeID, queueing); } },
+-		{ "DarkFilterThresholdingCudaNode", [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<DarkFilterThresholdingCudaNode>(g, nodeID, queueing); } },
+-		{ "BilateralFilterCudaNode",        [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<BilateralFilterCudaNode>(g, nodeID, queueing); } },
+-		{ "MedianFilterCudaNode",           [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<MedianFilterCudaNode>(g, nodeID, queueing); } },
++		//{ "NoiseNode",                      [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<NoiseNode>(g, nodeID, queueing); } },
++		//{ "ImageProcessingCudaNode",        [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<ImageProcessingCudaNode>(g, nodeID, queueing); } },
++		//{ "ImageProcessingBufferCudaNode",  [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<ImageProcessingBufferCudaNode>(g, nodeID, queueing); } },
++		//{ "FilterSradCudaNode",             [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<FilterSradCudaNode>(g, nodeID, queueing); } },
++		//{ "TimeGainCompensationNode",       [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<TimeGainCompensationNode>(g, nodeID, queueing); } },
++		//{ "DarkFilterThresholdingCudaNode", [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<DarkFilterThresholdingCudaNode>(g, nodeID, queueing); } },
++		//{ "BilateralFilterCudaNode",        [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<BilateralFilterCudaNode>(g, nodeID, queueing); } },
++		//{ "MedianFilterCudaNode",           [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<MedianFilterCudaNode>(g, nodeID, queueing); } },
+ #endif
+ #ifdef HAVE_TORCH
+-		{ "TorchNode",                [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<TorchNode>(g, nodeID, queueing); } },
++		//{ "TorchNode",                [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<TorchNode>(g, nodeID, queueing); } },
+ #endif
+ #ifdef HAVE_CUFFT
+-		{ "HilbertEnvelopeNode", [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<HilbertEnvelopeNode>(g, nodeID, queueing); } },
++		//{ "HilbertEnvelopeNode", [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<HilbertEnvelopeNode>(g, nodeID, queueing); } },
+ #endif
+ #ifdef HAVE_BEAMFORMER
+ 		{ "BeamformingNode",        [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<BeamformingNode>(g, nodeID, queueing); } },
+-		{ "IQDemodulatorNode",      [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<IQDemodulatorNode>(g, nodeID, queueing); } },
++		//{ "IQDemodulatorNode",      [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<IQDemodulatorNode>(g, nodeID, queueing); } },
+ 		{ "HilbertFirEnvelopeNode", [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<HilbertFirEnvelopeNode>(g, nodeID, queueing); } },
+ 		{ "LogCompressorNode",      [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<LogCompressorNode>(g, nodeID, queueing); } },
+ 		{ "ScanConverterNode",      [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<ScanConverterNode>(g, nodeID, queueing); } },
+-		{ "TemporalFilterNode",     [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<TemporalFilterNode>(g, nodeID, queueing); } },
+-		{ "RawDelayNode",           [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<RawDelayNode>(g, nodeID, queueing); } },
+-		{ "RxEventLimiterNode",     [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<RxEventLimiterNode>(g, nodeID, queueing); } },
++		//{ "TemporalFilterNode",     [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<TemporalFilterNode>(g, nodeID, queueing); } },
++		//{ "RawDelayNode",           [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<RawDelayNode>(g, nodeID, queueing); } },
++		//{ "RxEventLimiterNode",     [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<RxEventLimiterNode>(g, nodeID, queueing); } },
+ #endif
+ #ifdef HAVE_BEAMFORMER_MINIMUM_VARIANCE
+-		{ "BeamformingMVNode",    [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<BeamformingMVNode>(g, nodeID, queueing); } },
+-		{ "BeamformingMVpcgNode", [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<BeamformingMVpcgNode>(g, nodeID, queueing); } },
++		//{ "BeamformingMVNode",    [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<BeamformingMVNode>(g, nodeID, queueing); } },
++		//{ "BeamformingMVpcgNode", [](tbb::flow::graph& g, std::string nodeID, bool queueing) { return make_shared<BeamformingMVpcgNode>(g, nodeID, queueing); } },
+ #endif
+ 	};
+ }
+diff --git a/src/SupraLib/utilities/DataType.cpp b/src/SupraLib/utilities/DataType.cpp
+index 83259b8..bfc44a4 100644
+--- a/src/SupraLib/utilities/DataType.cpp
++++ b/src/SupraLib/utilities/DataType.cpp
+@@ -50,10 +50,10 @@ namespace supra
+ 		return TypeUint64;
+ 	}
+ #ifdef HAVE_CUDA
+-	template <>
++	/*template <>
+ 	DataType DataTypeGet<__half>() {
+ 		return TypeHalf;
+-	}
++	}*/
+ #endif
+ 	template <>
+ 	DataType DataTypeGet<float>() {
+diff --git a/src/SupraLib/utilities/FirFilterFactory.h b/src/SupraLib/utilities/FirFilterFactory.h
+index 09283ba..d0aaf44 100644
+--- a/src/SupraLib/utilities/FirFilterFactory.h
++++ b/src/SupraLib/utilities/FirFilterFactory.h
+@@ -89,7 +89,8 @@ namespace supra
+ 			ElementType omegaBandwidth = static_cast<ElementType>(2 * M_PI* bandwidth / samplingFrequency);
+ 			int halfWidth = ((int)length - 1) / 2;
+ 
+-			auto filter = std::make_shared<Container<ElementType>>(LocationHost, &dpct::get_default_queue(), length);
++			sycl::queue &default_queue=dpct::get_default_queue();
++			auto filter = std::make_shared<Container<ElementType>>(LocationHost, &default_queue, length);
+ 
+ 			//determine the filter function
+ 			std::function<ElementType(int)> filterFunction = [&halfWidth](int n) -> ElementType {
+@@ -184,7 +185,7 @@ namespace supra
+ 				break;
+ 			case FilterWindowKaiser:
+ 				windowFunction = [maxN, beta](int n) -> ElementType {
+-					double argument = beta * sqrt(1.0 - (2 * (( ElementType )n - maxN / 2) / maxN) * (2 * (( ElementType )n - maxN / 2) / maxN));
++					double argument = beta * sycl::sqrt(1.0 - (2 * (( ElementType )n - maxN / 2) / maxN) * (2 * (( ElementType )n - maxN / 2) / maxN));
+ 					return static_cast<ElementType>(bessel0_1stKind(argument) / bessel0_1stKind(beta)); };
+ 				break;
+ 			case FilterWindowRectangular:
+@@ -211,7 +212,7 @@ namespace supra
+ 				gainR += filter->get()[k] * cos(omega * (ElementType)k);
+ 				gainI += filter->get()[k] * sin(omega * (ElementType)k);
+ 			}
+-			ElementType gain = sqrt(gainR*gainR + gainI*gainI);
++			ElementType gain = sycl::sqrt(gainR*gainR + gainI*gainI);
+ 			for (int k = 0; k < filter->size(); k++)
+ 			{
+ 				filter->get()[k] /= gain;
+diff --git a/src/SupraLib/utilities/cudaUtility.h b/src/SupraLib/utilities/syclUtility.h
+similarity index 95%
+rename from src/SupraLib/utilities/cudaUtility.h
+rename to src/SupraLib/utilities/syclUtility.h
+index 8d5356c..8167b17 100644
+--- a/src/SupraLib/utilities/cudaUtility.h
++++ b/src/SupraLib/utilities/syclUtility.h
+@@ -56,11 +56,11 @@ namespace supra
+ 
+ 	/// Verifies a cuda call returned "cudaSuccess". Prints error message otherwise.
+ 	/// returns true if no error occured, false otherwise.
+-	#define cudaSafeCall(_err_) cudaSafeCall2(_err_, __FILE__, __LINE__, FUNCNAME_PORTABLE)
++	#define syclSafeCall(_err_) syclSafeCall2(_err_, __FILE__, __LINE__, FUNCNAME_PORTABLE)
+ 
+ 	/// Verifies a cuda call returned "cudaSuccess". Prints error message otherwise.
+ 	/// returns true if no error occured, false otherwise. Calles by cudaSafeCall
+-	inline bool cudaSafeCall2(int err, const char* file, int line, const char* func) {
++	inline bool syclSafeCall2(int err, const char* file, int line, const char* func) {
+ 
+ 		//#ifdef CUDA_ERROR_CHECK
+ 		/*
+@@ -74,7 +74,7 @@ namespace supra
+ 			/*
+ 			DPCT1009:2: SYCL uses exceptions to report errors and does not use the error codes. The original code was commented out and a warning string was inserted. You need to rewrite this code.
+ 			*/
+-			sprintf(buf, "CUDA Error (in \"%s\", Line: %d, %s): %d - %s\n", file, line, func, err, "cudaGetErrorString not supported" /*cudaGetErrorString(err)*/);
++			sprintf(buf, "SYCL Error (in \"%s\", Line: %d, %s): %d - %s\n", file, line, func, err, "cudaGetErrorString not supported" /*cudaGetErrorString(err)*/);
+ 			printf("%s", buf);
+ 			logging::log_error(buf);
+ 			return false;
+diff --git a/src/SupraLib/utilities/utility.h b/src/SupraLib/utilities/utility.h
+index 729de80..49ec2b7 100644
+--- a/src/SupraLib/utilities/utility.h
++++ b/src/SupraLib/utilities/utility.h
+@@ -33,6 +33,18 @@ namespace std
+ 	}
+ }
+ 
++static void Report_time(const std::string &msg, sycl::event e)
++{
++    cl::sycl::cl_ulong time_start = 
++        e.get_profiling_info<sycl::info::event_profiling::command_start>();
++
++    cl::sycl::cl_ulong time_end = 
++        e.get_profiling_info<sycl::info::event_profiling::command_end>();
++
++    double elapsed = (time_end - time_start) / 1e6;
++    std::cout << msg << elapsed << " milliseconds\n"; 
++}
++
+ namespace supra
+ {
+ 	using std::to_string;
+diff --git a/src/SupraLib/vec.h b/src/SupraLib/vec.h
+index 8b10d3e..b0f08de 100644
+--- a/src/SupraLib/vec.h
++++ b/src/SupraLib/vec.h
+@@ -15,7 +15,7 @@
+ #include <CL/sycl.hpp>
+ #include <dpct/dpct.hpp>
+ #include "utilities/utility.h"
+-#include "utilities/cudaUtility.h"
++#include "utilities/syclUtility.h"
+ #include <cmath>
+ 
+ namespace supra
+@@ -228,7 +228,7 @@ namespace supra
+ 	template <typename Ta>
+ 	inline Ta norm(const vec2T<Ta>& a)
+ 	{
+-		return sqrt(a.x*a.x + a.y*a.y);
++		return sycl::sqrt(a.x*a.x + a.y*a.y);
+ 	}
+ 	/// Normalization of a two-vector
+ 	template <typename Ta>
+-- 
+2.17.1
+
