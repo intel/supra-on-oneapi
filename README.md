@@ -1,5 +1,5 @@
-# This project provides you the patches to enable SUPRA on Intel GPU using Intel(R) oneAPI Base Toolkit beta07.
-### Note: Intel(R) oneAPI Base Toolkit is still in Beta stage, this project based on Intel(R) oneAPI Base Toolkit beta07 is for reference only. It should not be used for production.
+# This project provides you the patches to enable SUPRA on Intel GPU using Intel(R) oneAPI Base Toolkit Golden 2021.2.0.
+### Note: Intel(R) oneAPI Base Toolkit is still in Beta stage, this project based on Intel(R) oneAPI Base Toolkit Golden 2021.2.0 is for reference only. It should not be used for production.
 
 ## 1. Project Introduction
 ### (1) Envrionment setup 
@@ -7,11 +7,14 @@
 Please refer to Intel(R) oneAPI installation guide: https://software.intel.com/content/www/us/en/develop/articles/installation-guide-for-intel-oneapi-toolkits.html
 
 
-OS: Ubuntu 18.04
+OS: Ubuntu 18.04 or Ubuntu 20.04
 
-Hardware: Intel CPU with Gen9 or later Graphics.
+Hardware: Intel CPU with Gen9 or Intel Tigerlake Iris Xe GPU.
 
-This project was tested on Intel(R) i7-8700K CPU with Intel(R) UHD Graphics 630, please refer https://ark.intel.com/content/www/us/en/ark/products/126684/intel-core-i7-8700k-processor-12m-cache-up-to-4-70-ghz.html
+This project was tested on Intel(R) i7-8700K CPU with Intel(R) UHD Graphics 630 , please refer https://ark.intel.com/content/www/us/en/ark/products/126684/intel-core-i7-8700k-processor-12m-cache-up-to-4-70-ghz.html
+
+This project was tested on Intel(R) i7-1185G7E CPU with Intel(R) Iris Xe GPU, please refer https://ark.intel.com/content/www/us/en/ark/products/208076/intel-core-i7-1185g7e-processor-12m-cache-up-to-4-40-ghz.html
+
 
 
 ### (2) Patch information
@@ -79,7 +82,7 @@ Build and Run supra demo, in supra directory:
 
 Setup eviroment:
 
-`source /opt/intel/inteloneapi/setvars.sh`
+`source /opt/intel/oneapi/setvars.sh`
 
 For Intel(R) oneAPI Base Toolkit beta07 version, you need change the $PATH, follow this two steps:
 
@@ -101,9 +104,6 @@ it should like this:
 
 (use your machine to print PATH content, don't copy from here)
 
-Use opencl as low-level library(optional):
-
-`export SYCL_BE=PI_OPENCL`
 
 Configure project:
 

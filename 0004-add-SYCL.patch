@@ -1,4 +1,4 @@
-From cf3f5a0dd38e69c378196f681992dd7387226940 Mon Sep 17 00:00:00 2001
+From fa5464f603cc91e9f6dae0c5b53a1b4175bd58d3 Mon Sep 17 00:00:00 2001
 From: wangyon1 <yong4.wang@intel.com>
 Date: Fri, 5 Feb 2021 09:56:45 +0800
 Subject: [PATCH 4/4] add SYCL
@@ -7,10 +7,13 @@ Subject: [PATCH 4/4] add SYCL
  src/SupraLib/Beamformer/Beamformer.cpp        |  2 +-
  src/SupraLib/Beamformer/BeamformingNode.cpp   | 12 ++--
  src/SupraLib/Beamformer/BeamformingNode.h     |  6 +-
+ .../Beamformer/HilbertFirEnvelope.dp.cpp      |  8 +--
+ src/SupraLib/Beamformer/LogCompressor.dp.cpp  |  7 +--
  ...merCuda.dp.cpp => RxBeamformerSYCL.dp.cpp} | 56 ++++++-------------
  ...{RxBeamformerCuda.h => RxBeamformerSYCL.h} | 12 ++--
+ src/SupraLib/Beamformer/ScanConverter.dp.cpp  |  7 +--
  src/SupraLib/CMakeLists.txt                   |  4 +-
- 6 files changed, 36 insertions(+), 56 deletions(-)
+ 9 files changed, 45 insertions(+), 69 deletions(-)
  rename src/SupraLib/Beamformer/{RxBeamformerCuda.dp.cpp => RxBeamformerSYCL.dp.cpp} (92%)
  rename src/SupraLib/Beamformer/{RxBeamformerCuda.h => RxBeamformerSYCL.h} (91%)
 
@@ -103,6 +106,53 @@ index 314eb24..72b0109 100644
  		bool m_interpolateTransmits;
  		int32_t m_additionalOffset;
  	};
+diff --git a/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp b/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
+index 99cf7be..da32ae6 100644
+--- a/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
++++ b/src/SupraLib/Beamformer/HilbertFirEnvelope.dp.cpp
+@@ -9,17 +9,15 @@
+ // 
+ // ================================================================================================
+ 
++#include <oneapi/dpl/execution>
++#include <oneapi/dpl/algorithm>
++
+ #include <CL/sycl.hpp>
+-#include <dpct/dpct.hpp>
+ #include "HilbertFirEnvelope.h"
+ #include <utilities/utility.h>
+ #include <utilities/FirFilterFactory.h>
+ #include "helper.h"
+ 
+-#include <dpct/dpl_utils.hpp>
+-#include <oneapi/dpl/execution>
+-#include <oneapi/dpl/algorithm>
+-
+ #include <algorithm>
+ 
+ using namespace std;
+diff --git a/src/SupraLib/Beamformer/LogCompressor.dp.cpp b/src/SupraLib/Beamformer/LogCompressor.dp.cpp
+index 70bc68b..eb33e66 100644
+--- a/src/SupraLib/Beamformer/LogCompressor.dp.cpp
++++ b/src/SupraLib/Beamformer/LogCompressor.dp.cpp
+@@ -9,14 +9,13 @@
+ // 
+ // ================================================================================================
+ 
++#include <oneapi/dpl/execution>
++#include <oneapi/dpl/algorithm>
++
+ #include <CL/sycl.hpp>
+-#include <dpct/dpct.hpp>
+ #include "LogCompressor.h"
+ #include <utilities/utility.h>
+ 
+-#include <dpct/dpl_utils.hpp>
+-#include <oneapi/dpl/execution>
+-#include <oneapi/dpl/algorithm>
+ #include <cmath>
+ 
+ using namespace std;
 diff --git a/src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp b/src/SupraLib/Beamformer/RxBeamformerSYCL.dp.cpp
 similarity index 92%
 rename from src/SupraLib/Beamformer/RxBeamformerCuda.dp.cpp
@@ -291,6 +341,31 @@ index 5d9f3cf..495f030 100644
  
 -#endif //!__RXBEAMFORMERCUDA_H__
 +#endif //!__RXBEAMFORMERSYCL_H__
+diff --git a/src/SupraLib/Beamformer/ScanConverter.dp.cpp b/src/SupraLib/Beamformer/ScanConverter.dp.cpp
+index 43f4504..a16e2d8 100644
+--- a/src/SupraLib/Beamformer/ScanConverter.dp.cpp
++++ b/src/SupraLib/Beamformer/ScanConverter.dp.cpp
+@@ -24,17 +24,16 @@
+ //
+ // ================================================================================================
+ 
++#include <oneapi/dpl/execution>
++#include <oneapi/dpl/algorithm>
++
+ #include <CL/sycl.hpp>
+-#include <dpct/dpct.hpp>
+ #include "ScanConverter.h"
+ #include <cassert>
+ #include <utilities/syclUtility.h>
+ #include <utilities/utility.h>
+ #include <utilities/Logging.h>
+ 
+-#include <dpct/dpl_utils.hpp>
+-#include <oneapi/dpl/execution>
+-#include <oneapi/dpl/algorithm>
+ #include <cmath>
+ 
+ using namespace std;
 diff --git a/src/SupraLib/CMakeLists.txt b/src/SupraLib/CMakeLists.txt
 index a2472b9..56a7f6a 100644
 --- a/src/SupraLib/CMakeLists.txt
