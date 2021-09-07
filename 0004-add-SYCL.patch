@@ -1,9 +1,14 @@
-From fa5464f603cc91e9f6dae0c5b53a1b4175bd58d3 Mon Sep 17 00:00:00 2001
+From 0cd01e7a8a1a4052059f7dee668289261c595eaa Mon Sep 17 00:00:00 2001
 From: wangyon1 <yong4.wang@intel.com>
 Date: Fri, 5 Feb 2021 09:56:45 +0800
 Subject: [PATCH 4/4] add SYCL
 
 ---
+ src/CommandlineInterface/CMakeLists.txt       |  2 +-
+ src/GraphicInterface/CMakeLists.txt           |  2 +-
+ src/RestInterface/CMakeLists.txt              |  6 +-
+ src/RosInterface/CMakeLists.txt               |  2 +-
+ src/SupraExecutor/CMakeLists.txt              |  2 +-
  src/SupraLib/Beamformer/Beamformer.cpp        |  2 +-
  src/SupraLib/Beamformer/BeamformingNode.cpp   | 12 ++--
  src/SupraLib/Beamformer/BeamformingNode.h     |  6 +-
@@ -13,10 +18,92 @@ Subject: [PATCH 4/4] add SYCL
  ...{RxBeamformerCuda.h => RxBeamformerSYCL.h} | 12 ++--
  src/SupraLib/Beamformer/ScanConverter.dp.cpp  |  7 +--
  src/SupraLib/CMakeLists.txt                   |  4 +-
- 9 files changed, 45 insertions(+), 69 deletions(-)
+ src/Wrapper/CMakeLists.txt                    |  2 +-
+ 15 files changed, 53 insertions(+), 77 deletions(-)
  rename src/SupraLib/Beamformer/{RxBeamformerCuda.dp.cpp => RxBeamformerSYCL.dp.cpp} (92%)
  rename src/SupraLib/Beamformer/{RxBeamformerCuda.h => RxBeamformerSYCL.h} (91%)
 
+diff --git a/src/CommandlineInterface/CMakeLists.txt b/src/CommandlineInterface/CMakeLists.txt
+index a15ba72..bc8b110 100644
+--- a/src/CommandlineInterface/CMakeLists.txt
++++ b/src/CommandlineInterface/CMakeLists.txt
+@@ -33,7 +33,7 @@ TARGET_COMPILE_DEFINITIONS(SUPRA_CMD
+ TARGET_LINK_LIBRARIES(SUPRA_CMD
+ 	${SUPRA_Lib_LIBRARIES}
+ )
+-set_property(TARGET SUPRA_CMD PROPERTY CXX_STANDARD 11)
++set_property(TARGET SUPRA_CMD PROPERTY CXX_STANDARD 17)
+ set_property(TARGET SUPRA_CMD PROPERTY CXX_STANDARD_REQUIRED ON)
+ 
+ add_dependencies(SUPRA_CMD SUPRA_Lib)
+diff --git a/src/GraphicInterface/CMakeLists.txt b/src/GraphicInterface/CMakeLists.txt
+index 29a59f5..fa149d9 100644
+--- a/src/GraphicInterface/CMakeLists.txt
++++ b/src/GraphicInterface/CMakeLists.txt
+@@ -156,7 +156,7 @@ TARGET_LINK_LIBRARIES(SUPRA_GUI
+ 	${CAMPVIS_LIB}
+ 	${NodeEditor_LIBRARIES}
+ )
+-set_property(TARGET SUPRA_GUI PROPERTY CXX_STANDARD 11)
++set_property(TARGET SUPRA_GUI PROPERTY CXX_STANDARD 17)
+ set_property(TARGET SUPRA_GUI PROPERTY CXX_STANDARD_REQUIRED ON)
+ 
+ add_dependencies(SUPRA_GUI SUPRA_Lib NodeEditor)
+diff --git a/src/RestInterface/CMakeLists.txt b/src/RestInterface/CMakeLists.txt
+index fb8fa95..94a417e 100644
+--- a/src/RestInterface/CMakeLists.txt
++++ b/src/RestInterface/CMakeLists.txt
+@@ -45,13 +45,13 @@ endif()
+ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+ 
+     message("-- configuring clang options")
+-    set(CMAKE_CXX_FLAGS "-arch x86_64 -std=c++11 -stdlib=libc++ -DBOOST_LOG_DYN_LINK -Wno-deprecated-declarations")
++    set(CMAKE_CXX_FLAGS "-arch x86_64 -std=c++17 -stdlib=libc++ -DBOOST_LOG_DYN_LINK -Wno-deprecated-declarations")
+ 
+ elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+ 
+     message("-- configuring gcc options")
+ 
+-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11 -DBOOST_LOG_DYN_LINK")
++    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++17 -DBOOST_LOG_DYN_LINK")
+ 
+ endif()
+ 
+@@ -129,7 +129,7 @@ TARGET_LINK_LIBRARIES(SUPRA_REST
+ )
+ TARGET_COMPILE_DEFINITIONS(SUPRA_REST
+ 	PRIVATE ${SUPRA_Lib_DEFINES})
+-set_property(TARGET SUPRA_REST PROPERTY CXX_STANDARD 11)
++set_property(TARGET SUPRA_REST PROPERTY CXX_STANDARD 17)
+ set_property(TARGET SUPRA_REST PROPERTY CXX_STANDARD_REQUIRED ON)
+ 
+ add_dependencies(SUPRA_REST SUPRA_Lib)
+diff --git a/src/RosInterface/CMakeLists.txt b/src/RosInterface/CMakeLists.txt
+index 37eab21..dd769c6 100644
+--- a/src/RosInterface/CMakeLists.txt
++++ b/src/RosInterface/CMakeLists.txt
+@@ -39,7 +39,7 @@ TARGET_LINK_LIBRARIES(SUPRA_ROS
+ )
+ TARGET_COMPILE_DEFINITIONS(SUPRA_ROS
+ 	PRIVATE ${SUPRA_Lib_DEFINES})
+-set_property(TARGET SUPRA_ROS PROPERTY CXX_STANDARD 11)
++set_property(TARGET SUPRA_ROS PROPERTY CXX_STANDARD 17)
+ set_property(TARGET SUPRA_ROS PROPERTY CXX_STANDARD_REQUIRED ON)
+ 
+ add_dependencies(SUPRA_ROS SUPRA_Lib)
+diff --git a/src/SupraExecutor/CMakeLists.txt b/src/SupraExecutor/CMakeLists.txt
+index 978cb3c..049bea6 100644
+--- a/src/SupraExecutor/CMakeLists.txt
++++ b/src/SupraExecutor/CMakeLists.txt
+@@ -31,7 +31,7 @@ TARGET_COMPILE_DEFINITIONS(SUPRA_EXECUTOR
+ TARGET_LINK_LIBRARIES(SUPRA_EXECUTOR
+ 	${SUPRA_Lib_LIBRARIES}
+ )
+-set_property(TARGET SUPRA_EXECUTOR PROPERTY CXX_STANDARD 11)
++set_property(TARGET SUPRA_EXECUTOR PROPERTY CXX_STANDARD 17)
+ set_property(TARGET SUPRA_EXECUTOR PROPERTY CXX_STANDARD_REQUIRED ON)
+ 
+ add_dependencies(SUPRA_EXECUTOR SUPRA_Lib)
 diff --git a/src/SupraLib/Beamformer/Beamformer.cpp b/src/SupraLib/Beamformer/Beamformer.cpp
 index e83a29d..5489c7f 100644
 --- a/src/SupraLib/Beamformer/Beamformer.cpp
@@ -387,6 +474,19 @@ index a2472b9..56a7f6a 100644
  		Beamformer/RxBeamformerCommon.h
  		Beamformer/RxSampleBeamformerDelayAndSum.h
  		Beamformer/RxSampleBeamformerDelayAndStdDev.h
+diff --git a/src/Wrapper/CMakeLists.txt b/src/Wrapper/CMakeLists.txt
+index 2562392..749ba26 100644
+--- a/src/Wrapper/CMakeLists.txt
++++ b/src/Wrapper/CMakeLists.txt
+@@ -28,7 +28,7 @@ TARGET_COMPILE_DEFINITIONS(SUPRA_Wrapper
+ TARGET_LINK_LIBRARIES(SUPRA_Wrapper
+ 	${SUPRA_Lib_LIBRARIES}
+ )
+-set_property(TARGET SUPRA_Wrapper PROPERTY CXX_STANDARD 11)
++set_property(TARGET SUPRA_Wrapper PROPERTY CXX_STANDARD 17)
+ set_property(TARGET SUPRA_Wrapper PROPERTY CXX_STANDARD_REQUIRED ON)
+ 
+ add_dependencies(SUPRA_Wrapper SUPRA_Lib)
 -- 
 2.17.1
 

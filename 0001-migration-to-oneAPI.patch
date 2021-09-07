@@ -1,4 +1,4 @@
-From 3aff59ddcffaaf1d126eb07d98769505d3f52c62 Mon Sep 17 00:00:00 2001
+From 2c2496a1763f8fba1a428b1b237641dbba198df5 Mon Sep 17 00:00:00 2001
 From: wangyon1 <yong4.wang@intel.com>
 Date: Tue, 2 Feb 2021 15:08:51 +0800
 Subject: [PATCH 1/4] migration to oneAPI
