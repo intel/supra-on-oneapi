@@ -1,5 +1,5 @@
-# This project provides you the patches to enable SUPRA on Intel GPU using Intel(R) oneAPI Base Toolkit Golden 2021.2.0.
-### Note: Intel(R) oneAPI Base Toolkit is still in Beta stage, this project based on Intel(R) oneAPI Base Toolkit Golden 2021.2.0 is for reference only. It should not be used for production.
+# This project provides you the patches to enable SUPRA on Intel GPU using Intel(R) oneAPI Base Toolkit Golden 2021.3.0.(Intel(R) oneAPI DPC++/C++ Compiler 2021.3.0)
+### Note:  This project based on Intel(R) oneAPI Base Toolkit Golden 2021.3.0 is for reference only. It should not be used for production.
 
 ## 1. Project Introduction
 ### (1) Envrionment setup 
