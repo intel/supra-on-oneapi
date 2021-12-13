@@ -6,8 +6,13 @@
 ## 1. Project Introduction
 ### (1) Envrionment setup 
 
-Please refer to Intel(R) oneAPI installation guide: https://software.intel.com/content/www/us/en/develop/articles/installation-guide-for-intel-oneapi-toolkits.html
+Please make sure you have installed Intel GPU driver (very important), you can follow below links:
+ 
+ https://www.intel.com/content/www/us/en/develop/documentation/installation-guide-for-intel-oneapi-toolkits-linux/top/prerequisites/install-intel-gpu-drivers.html
+ 
+ https://dgpu-docs.intel.com/installation-guides/ubuntu/ubuntu-bionic.html
 
+You need install Intel oneAPI, Please refer to Intel(R) oneAPI installation guide: https://software.intel.com/content/www/us/en/develop/articles/installation-guide-for-intel-oneapi-toolkits.html
 
 OS: Ubuntu 18.04 or Ubuntu 20.04
 
