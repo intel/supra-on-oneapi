@@ -32,6 +32,9 @@ This project was tested on Intel(R) i7-1185G7E CPU with Intel(R) Iris Xe GPU, pl
 
 ### 
 
+### Publications
+We have a published paper on IEEE Xplore, You can get more detail about the code from it: https://ieeexplore.ieee.org/document/9460657
+
 ## 2 Project build steps
 There are 2 ways you can build and run our project. the jupyter notebook provides simple and quick method to enable SUPRA. if you want to know complete build process, you can follow the Linux terminal method to compile and run, which also won't take too long.
 
